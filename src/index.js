@@ -1,0 +1,54 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const errorHandler = require('./middlewares/errorHandler');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'], // Allow common dev ports
+    credentials: true
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// Routes
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/employees', require('./routes/employee.routes'));
+app.use('/api/companies', require('./routes/company.routes'));
+app.use('/api/dashboard', require('./routes/dashboard.routes'));
+app.use('/api/departments', require('./routes/department.routes'));
+app.use('/api/users', require('./routes/user.routes'));
+app.use('/api/attendance', require('./routes/attendance.routes'));
+app.use('/api/leaves', require('./routes/leave.routes'));
+app.use('/api/payrolls', require('./routes/payroll.routes'));
+
+// Finance Routes
+app.use('/api/transaction-codes', require('./routes/transactionCode.routes'));
+app.use('/api/transactions', require('./routes/transaction.routes'));
+app.use('/api/cheques', require('./routes/cheque.routes'));
+app.use('/api/bank-transfers', require('./routes/bankTransfer.routes'));
+app.use('/api/advance-payments', require('./routes/advancePayment.routes'));
+app.use('/api/processing', require('./routes/processing.routes'));
+app.use('/api/redundancies', require('./routes/redundancy.routes'));
+app.use('/api/bank-accounts', require('./routes/bankAccount.routes'));
+app.use('/api/gang-shift', require('./routes/gangShift.routes'));
+app.use('/api/sales-share', require('./routes/salesShare.routes'));
+app.use('/api/system-settings', require('./routes/systemSettings.routes'));
+app.use('/api/audit', require('./routes/audit.routes'));
+
+// Root route
+app.get('/', (req, res) => {
+    res.json({ message: "HRM API is running..." });
+});
+
+// Error Handler
+app.use(errorHandler);
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

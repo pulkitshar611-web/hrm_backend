@@ -1,0 +1,9 @@
+{
+  "companyId": "0937a4c7-876a-4649-ade2-938b8ca81373",
+  "bankName": "Test Bank",
+  "bankBranch": "Main Branch",
+  "accountNumber": "123456789",
+  "identificationNo": "ID123",
+  "glAccount": "GL001",
+  "exportPath": "/tmp"
+}

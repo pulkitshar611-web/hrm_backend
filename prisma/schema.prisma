@@ -1,0 +1,456 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  username      String         @unique
+  email         String         @unique
+  password      String
+  role          Role           @default(STAFF)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+
+  @@map("user")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "refreshtoken_userId_fkey")
+  @@map("refreshtoken")
+}
+
+model Company {
+  id           String     @id @default(uuid())
+  name         String
+  code         String     @unique
+  address      String?
+  phone        String?
+  email        String?
+  logo         String?
+  bankName     String?
+  bankAccount  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  payFrequency String     @default("Monthly")
+  trn          String?
+  employees    Employee[]
+  transactions Transaction[]
+  cheques      Cheque[]
+  bankTransfers BankTransfer[]
+  advancePayments AdvancePayment[]
+  processingLogs ProcessingLog[]
+  redundancies Redundancy[]
+  bankAccounts BankAccount[]
+  gangs        Gang[]
+  gangShiftAssignments GangShiftAssignment[]
+  salesShares  SalesShare[]
+  settings     Json?      // Stores custom labels, etc.
+
+  @@map("company")
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  employees Employee[]
+
+  @@map("department")
+}
+
+model Employee {
+  id                    String      @id @default(uuid())
+  employeeId            String      @unique
+  firstName             String
+  lastName              String
+  middleName            String?
+  email                 String?     @unique
+  phone                 String?
+  dob                   DateTime?
+  gender                String?
+  maritalStatus         String?
+  street                String?
+  city                  String?
+  parish                String?
+  country               String      @default("Jamaica")
+  trn                   String?
+  nisNumber             String?
+  nhtNumber             String?
+  emergencyName         String?
+  emergencyRelationship String?
+  emergencyPhone        String?
+  designation           String?
+  joinDate              DateTime?
+  status                String      @default("Active")
+  employmentType        String      @default("Full-Time")
+  payFrequency          String      @default("Monthly")
+  currency              String      @default("JMD")
+  paymentMethod         String      @default("Bank Transfer")
+  bankName              String?
+  bankAccount           String?
+  salaryType            String      @default("Salaried")
+  baseSalary            Decimal     @default(0.00) @db.Decimal(15, 2)
+  hourlyRate            Decimal     @default(0.00) @db.Decimal(15, 2)
+  lunchAllowance        Decimal     @default(0.00) @db.Decimal(15, 2)
+  travelAllowance       Decimal     @default(0.00) @db.Decimal(15, 2)
+  healthInsurance       Decimal     @default(0.00) @db.Decimal(15, 2)
+  pensionPercent        Decimal     @default(0.00) @db.Decimal(5, 2)
+  unionDues             Decimal     @default(0.00) @db.Decimal(15, 2)
+  departmentId          String?
+  companyId             String
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  company               Company     @relation(fields: [companyId], references: [id])
+  department            Department? @relation(fields: [departmentId], references: [id])
+  leaves                Leave[]
+  payrolls              Payroll[]
+  attendances           Attendance[]
+  transactions          Transaction[]
+  cheques               Cheque[]
+  bankTransfers         BankTransfer[]
+  advancePayments       AdvancePayment[]
+  redundancies          Redundancy[]
+  gangs                 EmployeeGang[]
+  gangShiftAssignments GangShiftAssignment[]
+  salesShares          SalesShare[]
+
+
+  @@index([companyId], map: "employee_companyId_fkey")
+  @@index([departmentId], map: "employee_departmentId_fkey")
+  @@map("employee")
+}
+
+model Leave {
+  id         String   @id @default(uuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  type       String
+  status     String   @default("Pending")
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId], map: "leave_employeeId_fkey")
+  @@map("leave")
+}
+
+model Payroll {
+  id          String    @id @default(uuid())
+  employeeId  String
+  period      String
+  grossSalary Decimal   @db.Decimal(15, 2)
+  netSalary   Decimal   @db.Decimal(15, 2)
+  deductions  Decimal   @db.Decimal(15, 2)
+  tax         Decimal   @db.Decimal(15, 2)
+  nis         Decimal   @default(0.00) @db.Decimal(15, 2)
+  nht         Decimal   @default(0.00) @db.Decimal(15, 2)
+  edTax       Decimal   @default(0.00) @db.Decimal(15, 2)
+  paye        Decimal   @default(0.00) @db.Decimal(15, 2)
+  paymentDate DateTime?
+  status      String    @default("Pending")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId], map: "payroll_employeeId_fkey")
+  @@map("payroll")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String?
+  userId    String?
+  details   String?  @db.LongText
+  createdAt DateTime @default(now())
+
+  @@map("auditlog")
+}
+
+model Attendance {
+  id         String   @id @default(uuid())
+  employeeId String
+  date       DateTime @db.Date
+  checkIn    String?
+  checkOut   String?
+  hours      Decimal  @default(0.00) @db.Decimal(5, 2)
+  status     String   @default("Present")
+  remarks    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId], map: "attendance_employeeId_fkey")
+  @@map("attendance")
+}
+
+model Transaction {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  transactionDate DateTime
+  type            String   // 'EARNING', 'DEDUCTION', 'ALLOWANCE'
+  code            String   // Transaction code
+  description     String
+  amount          Decimal  @db.Decimal(10, 2)
+  units           Decimal? @db.Decimal(10, 2)
+  rate            Decimal? @db.Decimal(10, 2)
+  status          String   @default("ENTERED") // 'ENTERED', 'POSTED', 'PROCESSED'
+  period          String   // Pay period
+  enteredBy       String
+  enteredAt       DateTime @default(now())
+  postedAt        DateTime?
+  postedBy        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId], map: "transaction_companyId_fkey")
+  @@index([employeeId], map: "transaction_employeeId_fkey")
+  @@map("transaction")
+}
+
+model Cheque {
+  id           String    @id @default(uuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id])
+  chequeNumber String    @unique
+  amount       Decimal   @db.Decimal(10, 2)
+  payee        String
+  date         DateTime
+  bankAccount  String
+  status       String    @default("PENDING") // 'PENDING', 'PRINTED', 'ISSUED', 'CLEARED', 'VOID'
+  printedAt    DateTime?
+  printedBy    String?
+  voidedAt     DateTime?
+  voidReason   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([companyId], map: "cheque_companyId_fkey")
+  @@index([employeeId], map: "cheque_employeeId_fkey")
+  @@map("cheque")
+}
+
+model BankTransfer {
+  id            String    @id @default(uuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id])
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  bankName      String    // 'BNS', 'NCB', 'JN', 'JMMB', 'Scotia', etc.
+  accountNumber String
+  accountName   String
+  amount        Decimal   @db.Decimal(10, 2)
+  reference     String
+  transferDate  DateTime
+  status        String    @default("PENDING") // 'PENDING', 'PROCESSED', 'FAILED'
+  batchId       String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([companyId], map: "banktransfer_companyId_fkey")
+  @@index([employeeId], map: "banktransfer_employeeId_fkey")
+  @@map("banktransfer")
+}
+
+model AdvancePayment {
+  id             String    @id @default(uuid())
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id])
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  amount         Decimal   @db.Decimal(10, 2)
+  reason         String
+  requestDate    DateTime
+  approvedDate   DateTime?
+  approvedBy     String?
+  status         String    @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED', 'PAID'
+  paymentDate    DateTime?
+  deductionStart String?   // Period to start deduction
+  installments   Int?      // Number of installments
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([companyId], map: "advancepayment_companyId_fkey")
+  @@index([employeeId], map: "advancepayment_employeeId_fkey")
+  @@map("advancepayment")
+}
+
+model ProcessingLog {
+  id               String    @id @default(uuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id])
+  processType      String    // 'TRANSACTION_POST', 'PAYROLL_CALC', 'PAYROLL_UPDATE', 'PAYMENT_PROCESS'
+  period           String
+  status           String    // 'STARTED', 'IN_PROGRESS', 'COMPLETED', 'FAILED'
+  recordsProcessed Int       @default(0)
+  recordsTotal     Int       @default(0)
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+  errorMessage     String?   @db.LongText
+  processedBy      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId], map: "processinglog_companyId_fkey")
+  @@map("processinglog")
+}
+
+model Redundancy {
+  id               String    @id @default(uuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id])
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id])
+  terminationType  String    // 'Standard Redundancy (Legal)', 'Voluntary Resignation', 'Termination for Cause', 'Retirement Settlement'
+  redundancyPay    Decimal   @db.Decimal(10, 2)
+  noticePay        Decimal   @db.Decimal(10, 2)
+  totalSettlement  Decimal   @db.Decimal(10, 2)
+  yearsOfService   Int
+  reason           String?   @db.LongText
+  status           String    @default("PENDING") // 'PENDING', 'APPROVED', 'COMPLETED', 'CANCELLED'
+  effectiveDate    DateTime
+  approvedAt       DateTime?
+  approvedBy       String?
+  processedBy      String
+  notes            String?   @db.LongText
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId], map: "redundancy_companyId_fkey")
+  @@index([employeeId], map: "redundancy_employeeId_fkey")
+  @@map("redundancy")
+}
+
+model BankAccount {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id])
+  bankName           String
+  bankBranch         String
+  accountNumber      String
+  identificationNo   String?
+  glAccount          String?
+  exportPath         String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([companyId], map: "bankaccount_companyId_fkey")
+  @@map("bankaccount")
+}
+
+model Gang {
+  id        String     @id @default(uuid())
+  name      String
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  employees EmployeeGang[]
+  assignments GangShiftAssignment[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([name, companyId])
+  @@index([companyId], map: "gang_companyId_fkey")
+  @@map("gang")
+}
+
+model EmployeeGang {
+  id         String   @id @default(uuid())
+  employeeId String
+  gangId     String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  gang       Gang     @relation(fields: [gangId], references: [id])
+
+  @@unique([employeeId, gangId])
+  @@index([employeeId], map: "employeegang_employeeId_fkey")
+  @@index([gangId], map: "employeegang_gangId_fkey")
+  @@map("employeegang")
+}
+
+model GangShiftAssignment {
+  id         String   @id @default(uuid())
+  employeeId String
+  gangId     String
+  shiftType  String   // 'Day Shift', 'Night Shift', 'Swing Shift'
+  date       DateTime
+  companyId  String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  gang       Gang     @relation(fields: [gangId], references: [id])
+  company    Company  @relation(fields: [companyId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([employeeId], map: "gangshift_employeeId_fkey")
+  @@index([gangId], map: "gangshift_gangId_fkey")
+  @@index([companyId], map: "gangshift_companyId_fkey")
+  @@map("gangshiftassignment")
+}
+
+model SalesShare {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  period          String
+  totalSales      Decimal  @db.Decimal(15, 2)
+  commissionRate  Decimal  @db.Decimal(5, 2)
+  shareAmount     Decimal  @db.Decimal(15, 2)
+  status          String   @default("GENERATED")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([employeeId, period])
+  @@index([companyId], map: "salesshare_companyId_fkey")
+  @@map("salesshare")
+}
+
+model TransactionCode {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  type        String   // 'EARNING', 'DEDUCTION', 'ALLOWANCE'
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("transactioncode")
+}
+
+model SystemSettings {
+  id        String   @id @default("global")
+  settings  Json     // Holds sessionTimeout, theme, systemName, etc.
+  updatedAt DateTime @updatedAt
+
+  @@map("systemsettings")
+}
+
+enum Role {
+  ADMIN
+  HR_MANAGER
+  FINANCE
+  STAFF
+}
