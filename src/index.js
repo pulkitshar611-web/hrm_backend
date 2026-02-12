@@ -16,8 +16,12 @@ const allowedOrigins = [
     process.env.FRONTEND_URL
 ].filter(Boolean);
 
+console.log("CORS Allowed Origins:", allowedOrigins);
+
 app.use(cors({
     origin: (origin, callback) => {
+        console.log("Request Origin:", origin);
+        
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         
@@ -25,8 +29,7 @@ app.use(cors({
             callback(null, true);
         } else {
             console.log('Blocked by CORS:', origin);
-            callback(null, false); // Fail silently or return error
-            // callback(new Error('Not allowed by CORS')); 
+            callback(null, false);
         }
     },
     credentials: true
