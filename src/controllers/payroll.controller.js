@@ -36,6 +36,12 @@ const getPayrolls = async (req, res, next) => {
                         lastName: true,
                         email: true,
                         trn: true,
+                        payFrequency: true,
+                        status: true,
+                        employmentType: true,
+                        designation: true,
+                        city: true,
+                        parish: true,
                         department: {
                             select: {
                                 id: true,

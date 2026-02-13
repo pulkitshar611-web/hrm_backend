@@ -36,23 +36,20 @@ async function main() {
 
     // 3. Employees
     const empData = [
-        { id: 'EMP101', fn: 'JOHN', ln: 'DOE', dept: 'ACCOUNTING', sal: 155000, bank: 'BNS', acc: '001234' },
-        { id: 'EMP102', fn: 'SARAH', ln: 'SMITH', dept: 'OPERATIONS', sal: 285000, bank: 'NCB', acc: '998877' },
-        { id: 'EMP204', fn: 'MIKE', ln: 'ROSS', dept: 'IT / MIS', sal: 195000, bank: 'BNS', acc: '445566' },
-        { id: 'EMP305', fn: 'RACHEL', ln: 'ZANE', dept: 'SALES', sal: 210000, bank: 'JN', acc: '112233' },
-        { id: 'EMP205', fn: 'PETER', ln: 'PARKER', dept: 'IT / MIS', sal: 165000, bank: 'NCB', acc: '881122' },
-        { id: 'EMP103', fn: 'BRUCE', ln: 'WAYNE', dept: 'OPERATIONS', sal: 450000, bank: 'JMMB', acc: '774411' },
-        { id: 'EMP306', fn: 'CLARK', ln: 'KENT', dept: 'SALES', sal: 180000, bank: 'BNS', acc: '223344' },
-        { id: 'EMP401', fn: 'DIANA', ln: 'PRINCE', dept: 'HUMAN RESOURCES', sal: 230000, bank: 'SAGICOR', acc: '990011' },
-        { id: 'EMP104', fn: 'TONY', ln: 'STARK', dept: 'ACCOUNTING', sal: 350000, bank: 'CITIBANK', acc: '556677' },
-        { id: 'EMP105', fn: 'NATASHA', ln: 'ROMANOFF', dept: 'OPERATIONS', sal: 215000, bank: 'BNS', acc: '334455' },
-        { id: 'EMP402', fn: 'STEVE', ln: 'ROGERS', dept: 'HUMAN RESOURCES', sal: 190000, bank: 'NCB', acc: '667788' }
+        { id: 'EMP101', fn: 'JOHN', ln: 'DOE', dept: 'ACCOUNTING', sal: 155000, bank: 'BNS', acc: '001234', des: 'GRADE 1', city: 'Kingston HQ', freq: 'Monthly' },
+        { id: 'EMP102', fn: 'SARAH', ln: 'SMITH', dept: 'OPERATIONS', sal: 285000, bank: 'NCB', acc: '998877', des: 'GRADE 2', city: 'Montego Bay', freq: 'Monthly' },
+        { id: 'EMP204', fn: 'MIKE', ln: 'ROSS', dept: 'IT / MIS', sal: 195000, bank: 'BNS', acc: '445566', des: 'GRADE 1', city: 'Kingston HQ', freq: 'Monthly' },
+        { id: 'EMP205', fn: 'PETER', ln: 'PARKER', dept: 'IT / MIS', sal: 165000, bank: 'NCB', acc: '881122', des: 'GRADE 3', city: 'Kingston HQ', freq: 'Weekly' }
     ];
 
     for (const e of empData) {
         await prisma.employee.upsert({
             where: { employeeId: e.id },
-            update: {},
+            update: {
+                designation: e.des,
+                city: e.city,
+                payFrequency: e.freq
+            },
             create: {
                 employeeId: e.id,
                 firstName: e.fn,
@@ -63,7 +60,10 @@ async function main() {
                 baseSalary: e.sal,
                 bankName: e.bank,
                 bankAccount: e.acc,
-                status: 'Active'
+                status: 'Active',
+                designation: e.des,
+                city: e.city,
+                payFrequency: e.freq
             }
         });
     }
@@ -73,18 +73,21 @@ async function main() {
     console.log("Creating Entry Stream...");
     await prisma.transaction.createMany({
         data: [
-            { companyId: company.id, employeeId: allEmps[0].id, transactionDate: new Date(), type: 'EARNING', code: 'BSAL', description: 'Basic Salary', amount: 77500, units: 1, rate: 77500, status: 'ENTERED', period: 'Feb-2026', enteredBy: 'admin@islandhr.com' },
-            { companyId: company.id, employeeId: allEmps[1].id, transactionDate: new Date(), type: 'EARNING', code: 'COMM', description: 'Monthly Commission', amount: 45000, units: 1, rate: 45000, status: 'ENTERED', period: 'Feb-2026', enteredBy: 'admin@islandhr.com' }
+            { companyId: company.id, employeeId: allEmps[0].id, transactionDate: new Date(), type: 'EARNING', code: 'BSAL', description: 'Basic Salary', amount: 77500, units: 1, rate: 77500, status: 'ENTERED', period: 'Feb-2026', enteredBy: 'admin@islandhr.com' }
         ]
     });
 
-    // 5. Payrolls (For Cheque/Bank integration testing)
-    console.log("Seeding Payroll Batches...");
+    // 5. Payrolls
+    console.log("Seeding Payroll Batches for JAN and FEB...");
+    await prisma.payroll.deleteMany({ where: { period: { in: ['Jan-2026', 'Feb-2026'] } } });
     await prisma.payroll.createMany({
         data: [
-            { employeeId: allEmps[0].id, period: 'Jan-2026', grossSalary: 155000, netSalary: 124000, deductions: 31000, tax: 23250, status: 'Approved' },
-            { employeeId: allEmps[1].id, period: 'Jan-2026', grossSalary: 285000, netSalary: 228000, deductions: 57000, tax: 42750, status: 'Approved' },
-            { employeeId: allEmps[2].id, period: 'Jan-2026', grossSalary: 195000, netSalary: 156000, deductions: 39000, tax: 29250, status: 'Approved' }
+            // JAN
+            { employeeId: allEmps[0].id, period: 'Jan-2026', grossSalary: 155000, netSalary: 124000, deductions: 31000, tax: 23250, status: 'Finalized' },
+            // FEB (Matches your filter)
+            { employeeId: allEmps[0].id, period: 'Feb-2026', grossSalary: 155000, netSalary: 124000, deductions: 31000, tax: 23250, status: 'Finalized' },
+            { employeeId: allEmps[1].id, period: 'Feb-2026', grossSalary: 285000, netSalary: 228000, deductions: 57000, tax: 42750, status: 'Finalized' },
+            { employeeId: allEmps[2].id, period: 'Feb-2026', grossSalary: 195000, netSalary: 156000, deductions: 39000, tax: 29250, status: 'Finalized' }
         ]
     });
 
