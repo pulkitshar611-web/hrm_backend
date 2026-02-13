@@ -3,7 +3,8 @@ const { successResponse, errorResponse } = require('../utils/response');
 
 const getPayrolls = async (req, res, next) => {
     try {
-        const { companyId, employeeId, period, status, email } = req.query;
+        const { companyId, employeeId, period, status, email, departmentId } = req.query;
+        console.log('[GET_PAYROLLS] Incoming params:', { companyId, employeeId, period, status, email, departmentId });
         const where = {};
         if (employeeId) where.employeeId = employeeId;
         if (period) where.period = period;
@@ -11,13 +12,18 @@ const getPayrolls = async (req, res, next) => {
         if (email) {
             where.employee = { email };
         }
+
         if (companyId) {
-            if (where.employee) {
-                where.employee.companyId = companyId;
-            } else {
-                where.employee = { companyId };
-            }
+            if (!where.employee) where.employee = {};
+            where.employee.companyId = companyId;
         }
+
+        if (departmentId && departmentId !== 'All Departments') {
+            if (!where.employee) where.employee = {};
+            where.employee.departmentId = departmentId;
+        }
+
+        console.log('[GET_PAYROLLS] Where:', JSON.stringify(where));
 
         const payrolls = await prisma.payroll.findMany({
             where,
@@ -29,12 +35,19 @@ const getPayrolls = async (req, res, next) => {
                         firstName: true,
                         lastName: true,
                         email: true,
-                        trn: true
+                        trn: true,
+                        department: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
                     }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
+        console.log(`[GET_PAYROLLS] Found ${payrolls.length} records`);
         return successResponse(res, payrolls);
     } catch (error) {
         next(error);
@@ -131,9 +144,12 @@ const generatePayrolls = async (req, res, next) => {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
         }
 
-        // Fetch all employees for the company
+        // Fetch only active employees for the company
         const employees = await prisma.employee.findMany({
-            where: { companyId }
+            where: {
+                companyId,
+                status: 'Active'
+            }
         });
 
         // Fetch all POSTED transactions for the period
@@ -146,7 +162,7 @@ const generatePayrolls = async (req, res, next) => {
         });
 
         const results = [];
-        
+
         // Loop through all employees to ensure everyone is considered
         for (const employee of employees) {
             let gross = parseFloat(employee.baseSalary || 0);
@@ -164,7 +180,7 @@ const generatePayrolls = async (req, res, next) => {
             }
 
             // --- JAMAICA STATUTORY CALCULATIONS (2024/2025) ---
-            
+
             // 1. NIS (National Insurance Scheme) - Typically 3% for Employee
             const nis = gross * 0.03;
 
@@ -306,6 +322,110 @@ const bulkSendEmails = async (req, res, next) => {
     }
 };
 
+const syncPayrolls = async (req, res, next) => {
+    try {
+        const { companyId, period } = req.body;
+
+        if (!companyId || !period) {
+            return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
+        }
+
+        // Fetch all active employees for the company
+        const employees = await prisma.employee.findMany({
+            where: {
+                companyId,
+                status: 'Active'
+            }
+        });
+
+        console.log(`[SYNC] Found ${employees.length} active employees for company ${companyId}`);
+
+        let createdCount = 0;
+        let existingCount = 0;
+
+        for (const employee of employees) {
+            // Check if payroll already exists for this period
+            const existing = await prisma.payroll.findFirst({
+                where: { employeeId: employee.id, period }
+            });
+
+            if (!existing) {
+                await prisma.payroll.create({
+                    data: {
+                        employeeId: employee.id,
+                        period,
+                        grossSalary: 0,
+                        netSalary: 0,
+                        deductions: 0,
+                        tax: 0,
+                        status: 'Pending'
+                    }
+                });
+                createdCount++;
+            } else {
+                existingCount++;
+            }
+        }
+
+        console.log(`[SYNC] Result for ${period}: Created ${createdCount}, Existing ${existingCount}`);
+        return successResponse(res, { created: createdCount, existing: existingCount }, `HRM Sync complete. ${createdCount} new records initialized, ${existingCount} already present.`);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const getPayrollBatches = async (req, res, next) => {
+    try {
+        const { companyId } = req.query;
+        if (!companyId) return errorResponse(res, "Company ID is required", "VALIDATION_ERROR", 400);
+
+        const summaries = await prisma.payroll.groupBy({
+            by: ['period'],
+            where: {
+                employee: { companyId }
+            },
+            _sum: {
+                grossSalary: true,
+                tax: true,
+                netSalary: true
+            },
+            _count: {
+                id: true
+            },
+            _max: {
+                createdAt: true
+            }
+        });
+
+        // Sort by the actual creation time of the latest record in that period (Newest First)
+        summaries.sort((a, b) => new Date(b._max.createdAt) - new Date(a._max.createdAt));
+
+        const formatted = await Promise.all(summaries.map(async (s, idx) => {
+            // Check if all records in this batch are finalized
+            const unfinalizedCount = await prisma.payroll.count({
+                where: {
+                    period: s.period,
+                    employee: { companyId },
+                    status: { not: 'Finalized' }
+                }
+            });
+
+            return {
+                id: `CB-${1000 + idx}`,
+                period: s.period,
+                totalGross: parseFloat(s._sum.grossSalary || 0),
+                totalTax: parseFloat(s._sum.tax || 0),
+                status: unfinalizedCount === 0 ? 'Finalized' : 'Calculated',
+                employeeCount: s._count.id
+            };
+        }));
+
+        return successResponse(res, formatted);
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getPayrolls,
     createPayroll,
@@ -313,6 +433,8 @@ module.exports = {
     deletePayroll,
     generatePayrolls,
     finalizeBatch,
+    syncPayrolls,
+    getPayrollBatches,
     sendPayrollEmail,
     bulkSendEmails
 };
