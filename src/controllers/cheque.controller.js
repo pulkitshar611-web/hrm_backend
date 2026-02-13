@@ -74,17 +74,20 @@ const createCheque = async (req, res, next) => {
     try {
         const data = req.body;
 
-        if (!data.companyId || !data.employeeId || !data.chequeNumber || !data.amount || !data.payee) {
+        if (!data.companyId || !data.chequeNumber || !data.amount || !data.payee) {
             return errorResponse(res, "Missing required fields", "VALIDATION_ERROR", 400);
         }
 
-        // Look up employee by their employeeId field
-        const employee = await prisma.employee.findUnique({
-            where: { employeeId: data.employeeId }
-        });
+        let employee = null;
+        if (data.employeeId) {
+            // Look up employee by their employeeId field
+            employee = await prisma.employee.findUnique({
+                where: { employeeId: data.employeeId }
+            });
 
-        if (!employee) {
-            return errorResponse(res, `Employee with ID ${data.employeeId} not found`, "NOT_FOUND", 404);
+            if (!employee) {
+                return errorResponse(res, `Employee with ID ${data.employeeId} not found`, "NOT_FOUND", 404);
+            }
         }
 
         // Check if cheque number already exists
@@ -99,7 +102,7 @@ const createCheque = async (req, res, next) => {
         const cheque = await prisma.cheque.create({
             data: {
                 companyId: data.companyId,
-                employeeId: employee.id,
+                employeeId: employee ? employee.id : null,
                 chequeNumber: data.chequeNumber,
                 amount: parseFloat(data.amount),
                 payee: data.payee,
@@ -127,7 +130,7 @@ const updateCheque = async (req, res, next) => {
 
         const updateData = {};
 
-        if (data.employeeId !== undefined) {
+        if (data.employeeId) {
             const employee = await prisma.employee.findUnique({
                 where: { employeeId: data.employeeId }
             });
@@ -135,6 +138,8 @@ const updateCheque = async (req, res, next) => {
                 return errorResponse(res, `Employee with ID ${data.employeeId} not found`, "NOT_FOUND", 404);
             }
             updateData.employeeId = employee.id;
+        } else if (data.employeeId === null) {
+            updateData.employeeId = null;
         }
 
         if (data.amount !== undefined) updateData.amount = parseFloat(data.amount);
@@ -219,7 +224,7 @@ const getChequeHistory = async (req, res, next) => {
     try {
         const { companyId, startDate, endDate } = req.query;
         const where = {
-            status: { in: ['PRINTED', 'ISSUED', 'CLEARED', 'VOID'] }
+            status: { in: ['PRINTED', 'ISSUED', 'CLEARED', 'VOID', 'PENDING'] }
         };
 
         if (companyId) where.companyId = companyId;
@@ -247,7 +252,7 @@ const getChequeHistory = async (req, res, next) => {
                     }
                 }
             },
-            orderBy: { printedAt: 'desc' }
+            orderBy: { createdAt: 'desc' }
         });
 
         const summary = {

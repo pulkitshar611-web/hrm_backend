@@ -230,8 +230,8 @@ model Cheque {
   id           String    @id @default(uuid())
   companyId    String
   company      Company   @relation(fields: [companyId], references: [id])
-  employeeId   String
-  employee     Employee  @relation(fields: [employeeId], references: [id])
+  employeeId   String?
+  employee     Employee? @relation(fields: [employeeId], references: [id])
   chequeNumber String    @unique
   amount       Decimal   @db.Decimal(10, 2)
   payee        String
