@@ -29,7 +29,9 @@ const getPayrolls = async (req, res, next) => {
                         firstName: true,
                         lastName: true,
                         email: true,
-                        trn: true
+                        trn: true,
+                        bankName: true,
+                        bankAccount: true
                     }
                 }
             },
