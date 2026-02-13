@@ -311,6 +311,39 @@ const getTransactionRegister = async (req, res, next) => {
     }
 };
 
+// Void transaction (POSTED -> VOIDED)
+const voidTransaction = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { reason, voidedBy } = req.body;
+
+        const transaction = await prisma.transaction.findUnique({ where: { id } });
+        if (!transaction) {
+            return errorResponse(res, "Transaction not found", "NOT_FOUND", 404);
+        }
+
+        if (transaction.status !== 'POSTED') {
+            return errorResponse(res, "Only POSTED transactions can be voided", "VALIDATION_ERROR", 400);
+        }
+
+        const voided = await prisma.transaction.update({
+            where: { id },
+            data: {
+                status: 'VOIDED',
+                amount: 0, // Set amount to 0 effectively reversing it
+                description: `${transaction.description} [VOIDED: ${reason || 'No reason provided'}]`,
+                updatedAt: new Date()
+            }
+        });
+
+        // Optional: Create an audit log entry here if AuditLog model exists
+
+        return successResponse(res, voided, "Transaction voided successfully");
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getTransactions,
     getTransaction,
@@ -319,5 +352,6 @@ module.exports = {
     deleteTransaction,
     bulkCreateTransactions,
     postTransactions,
-    getTransactionRegister
+    getTransactionRegister,
+    voidTransaction
 };
