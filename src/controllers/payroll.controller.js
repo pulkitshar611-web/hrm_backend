@@ -47,7 +47,11 @@ const getPayrolls = async (req, res, next) => {
                                 id: true,
                                 name: true
                             }
-                        }
+                        },
+                        // Banking Info
+                        paymentMethod: true,
+                        bankName: true,
+                        bankAccount: true,
                     }
                 }
             },
