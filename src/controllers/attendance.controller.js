@@ -103,4 +103,99 @@ const deleteAttendance = async (req, res, next) => {
     }
 };
 
-module.exports = { getAttendance, createAttendance, updateAttendance, deleteAttendance };
+const getLiveAttendance = async (req, res, next) => {
+    try {
+        const { companyId, date } = req.query;
+        const queryDate = date ? new Date(date) : new Date();
+        
+        // normalizing the query date to Start of Day (00:00:00) and End of Day (23:59:59)
+        const startOfDay = new Date(queryDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date(queryDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // 1. Fetch all active employees for the company
+        const employeeWhere = { status: 'Active' };
+        if (companyId) employeeWhere.companyId = companyId;
+
+        const employees = await prisma.employee.findMany({
+            where: employeeWhere,
+            select: {
+                id: true,
+                employeeId: true,
+                firstName: true,
+                lastName: true,
+                department: { select: { name: true } }
+            }
+        });
+
+        // 2. Fetch attendance for today
+        const attendanceRecords = await prisma.attendance.findMany({
+            where: {
+                date: {
+                    gte: startOfDay,
+                    lte: endOfDay
+                },
+                employee: {
+                    companyId: companyId // Ensure we filter attendance by company if provided
+                }
+            }
+        });
+
+        // 3. Map status
+        const liveData = employees.map(emp => {
+            const record = attendanceRecords.find(a => a.employeeId === emp.id);
+            let status = 'OFF'; // Default
+            let clockIn = '-';
+            let breakStatus = 'OUT'; // Default assumption for break status logic if not explicitly tracked
+
+            if (record) {
+                if (record.checkIn && !record.checkOut) {
+                    status = 'WORKING';
+                    clockIn = record.checkIn;
+                    // If your logic supports "Break" status explicitly in record.status
+                    if (record.status === 'Break') {
+                        status = 'ON BREAK';
+                        breakStatus = 'OUT'; // Out on break
+                    } else {
+                        breakStatus = 'IN'; 
+                    }
+                } else if (record.checkOut) {
+                    status = 'OFF'; // Completed shift
+                    clockIn = record.checkIn;
+                    breakStatus = 'OUT';
+                }
+            }
+
+            return {
+                id: emp.employeeId, // Display ID
+                dbId: emp.id,
+                name: `${emp.firstName} ${emp.lastName}`,
+                department: emp.department?.name || 'Unassigned',
+                clockIn: clockIn,
+                breakStatus: breakStatus,
+                status: status
+            };
+        });
+
+        // Calculate summary stats
+        const activeCount = liveData.filter(d => d.status === 'WORKING').length;
+        const breakCount = liveData.filter(d => d.status === 'ON BREAK').length;
+        const offCount = liveData.filter(d => d.status === 'OFF').length;
+
+        return successResponse(res, {
+            entries: liveData,
+            stats: {
+                active: activeCount,
+                lunch: breakCount, // Assuming lunch/break are same for now
+                off: offCount
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getAttendance, createAttendance, updateAttendance, deleteAttendance, getLiveAttendance };
