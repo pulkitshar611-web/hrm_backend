@@ -23,12 +23,12 @@ const calculateRedundancy = async (req, res, next) => {
         }
 
         // Calculate years of service
-        const hireDate = new Date(employee.hireDate || employee.joiningDate);
+        const hireDate = new Date(employee.joinDate || new Date());
         const today = new Date();
         const yearsOfService = Math.floor((today - hireDate) / (1000 * 60 * 60 * 24 * 365.25));
 
-        const baseSalary = parseFloat(employee.grossSalary || 0);
-        const weeklyRate = baseSalary / 4.33; // Standard approximation
+        const baseSalary = parseFloat(employee.baseSalary || 0);
+        const weeklyRate = baseSalary / 4.3333; // Standard approximation (52 weeks / 12 months)
 
         let redundancyPay = 0;
         let noticePay = 0;
@@ -86,7 +86,25 @@ const createRedundancy = async (req, res, next) => {
             return errorResponse(res, "Missing required fields", "VALIDATION_ERROR", 400);
         }
 
-        // Create redundancy record
+        // 1. Check if employee exists and is active
+        const employee = await prisma.employee.findUnique({
+            where: { id: employeeId }
+        });
+
+        if (!employee) {
+            return errorResponse(res, "Employee not found", "NOT_FOUND", 404);
+        }
+
+        // 2. Check for existing redundancy to prevent duplicates
+        const existing = await prisma.redundancy.findFirst({
+            where: { employeeId, status: { not: 'REJECTED' } }
+        });
+
+        if (existing) {
+            return errorResponse(res, "Redundancy settlement already exists for this employee", "DUPLICATE_RECORD", 400);
+        }
+
+        // 3. Create redundancy record
         const redundancy = await prisma.redundancy.create({
             data: {
                 companyId,
@@ -97,31 +115,56 @@ const createRedundancy = async (req, res, next) => {
                 totalSettlement: parseFloat(totalSettlement || 0),
                 yearsOfService: parseInt(yearsOfService || 0),
                 reason: reason || '',
-                status: 'PENDING',
+                status: 'APPROVED', // Auto-approved upon generation by authorized station
                 processedBy: processedBy || 'SYSTEM',
                 effectiveDate: new Date()
-            },
-            include: {
-                employee: {
-                    select: {
-                        id: true,
-                        employeeId: true,
-                        firstName: true,
-                        lastName: true,
-                        department: true
-                    }
-                },
-                company: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
-                    }
-                }
             }
         });
 
-        return successResponse(res, redundancy, "Redundancy record created successfully", 201);
+        // 4. TERMINATE EMPLOYEE STATUS
+        await prisma.employee.update({
+            where: { id: employeeId },
+            data: { status: 'Terminated' }
+        });
+
+        // 5. CREATE BANK TRANSFER (Finance Integration)
+        if (employee.bankAccount && employee.bankName) {
+            await prisma.bankTransfer.create({
+                data: {
+                    companyId,
+                    employeeId,
+                    bankName: employee.bankName,
+                    accountNumber: employee.bankAccount,
+                    accountName: `${employee.firstName} ${employee.lastName}`,
+                    amount: parseFloat(totalSettlement),
+                    reference: `RED-${employee.id.slice(0, 8)}-${Date.now()}`,
+                    transferDate: new Date(),
+                    status: 'PENDING'
+                }
+            });
+        }
+
+        // 6. CREATE PAYROLL TRANSACTION (Payroll Integration)
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const now = new Date();
+        const currentPeriod = `${months[now.getMonth()]}-${now.getFullYear()}`;
+
+        await prisma.transaction.create({
+            data: {
+                companyId,
+                employeeId,
+                transactionDate: new Date(),
+                type: 'EARNING',
+                code: 'RED_SETTLE',
+                description: `Final Settlement: ${terminationType}`,
+                amount: parseFloat(totalSettlement),
+                status: 'POSTED',
+                period: currentPeriod,
+                enteredBy: processedBy || 'REDUNDANCY_MOD'
+            }
+        });
+
+        return successResponse(res, redundancy, "Redundancy record saved and fully integrated with Finance & Payroll", 201);
     } catch (error) {
         next(error);
     }

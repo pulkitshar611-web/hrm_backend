@@ -23,10 +23,12 @@ const verifyToken = (req, res, next) => {
     }
 };
 
-const requireRole = (role) => {
+const requireRole = (roles) => {
     return (req, res, next) => {
-        if (!req.user || req.user.role !== role) {
-            return errorResponse(res, `Access denied. ${role} role required.`, "FORBIDDEN", 403);
+        const allowedRoles = Array.isArray(roles) ? roles : [roles];
+
+        if (!req.user || !allowedRoles.includes(req.user.role)) {
+            return errorResponse(res, `Access denied. ${allowedRoles.join(' or ')} role required.`, "FORBIDDEN", 403);
         }
         next();
     };

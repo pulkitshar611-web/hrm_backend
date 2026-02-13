@@ -15,6 +15,7 @@ model User {
   role          Role           @default(STAFF)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  windowPreferences Json?      // Stores layoutMode, animations, etc.
   refreshTokens RefreshToken[]
 
   @@map("user")
@@ -26,6 +27,9 @@ model RefreshToken {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  lastActive DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId], map: "refreshtoken_userId_fkey")
@@ -176,6 +180,9 @@ model AuditLog {
   entity    String
   entityId  String?
   userId    String?
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
   details   String?  @db.LongText
   createdAt DateTime @default(now())
 

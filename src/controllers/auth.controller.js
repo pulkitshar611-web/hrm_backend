@@ -36,7 +36,9 @@ const login = async (req, res, next) => {
             data: {
                 token: refreshToken,
                 userId: user.id,
-                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+                userAgent: req.headers['user-agent']
             }
         });
 
@@ -78,6 +80,16 @@ const refreshToken = async (req, res, next) => {
             { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
         );
 
+        // Update session heartbeat
+        await prisma.refreshToken.update({
+            where: { token: refreshToken },
+            data: {
+                lastActive: new Date(),
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+                userAgent: req.headers['user-agent']
+            }
+        });
+
         return successResponse(res, { accessToken }, "Token refreshed successfully");
 
     } catch (error) {
@@ -99,4 +111,45 @@ const logout = async (req, res, next) => {
     }
 };
 
-module.exports = { login, refreshToken, logout };
+const getSessions = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const sessions = await prisma.refreshToken.findMany({
+            where: { userId },
+            select: { id: true, ipAddress: true, userAgent: true, lastActive: true, createdAt: true, token: true }
+        });
+
+        // Mark current session
+        const currentToken = req.headers.authorization?.split(' ')[1]; // This is access token, not refresh token...
+        // We can identify current session by matching the refresh token if provided in body or cookie, 
+        // OR we can't easily identify which refresh token corresponds to this access token without storing jti.
+        // However, the frontend sends 'current session' logic.
+
+        // Actually, let's just return all. The frontend can deduce current by IP/UserAgent match or we can try better method later.
+        // Or we can rely on the fact that the token used to authenticate this request is linked to a user.
+
+        return successResponse(res, sessions);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const terminateSessions = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { currentRefreshToken } = req.body;
+
+        await prisma.refreshToken.deleteMany({
+            where: {
+                userId,
+                token: { not: currentRefreshToken } // Keep current if provided
+            }
+        });
+
+        return successResponse(res, null, "All other sessions terminated");
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { login, refreshToken, logout, getSessions, terminateSessions };

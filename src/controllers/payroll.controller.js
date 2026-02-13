@@ -154,11 +154,33 @@ const generatePayrolls = async (req, res, next) => {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
         }
 
+        // --- PROCESSING LOG INITIALIZATION ---
+        const processingLog = await prisma.processingLog.create({
+            data: {
+                companyId,
+                processType: 'PAYROLL_CALC',
+                period,
+                status: 'STARTED',
+                recordsTotal: 0,
+                recordsProcessed: 0,
+                processedBy: 'Payroll Wizard'
+            }
+        });
+
         // Fetch only active employees for the company
         const employees = await prisma.employee.findMany({
             where: {
                 companyId,
                 status: 'Active'
+            }
+        });
+
+        // Update log with total records
+        await prisma.processingLog.update({
+            where: { id: processingLog.id },
+            data: {
+                recordsTotal: employees.length,
+                status: 'IN_PROGRESS'
             }
         });
 
@@ -172,95 +194,110 @@ const generatePayrolls = async (req, res, next) => {
         });
 
         const results = [];
+        let count = 0;
 
         // Loop through all employees to ensure everyone is considered
         for (const employee of employees) {
-            let gross = parseFloat(employee.baseSalary || 0);
-            let deductions = 0;
+            try {
+                let gross = parseFloat(employee.baseSalary || 0);
+                let deductions = 0;
 
-            // Add posted transactions for this employee
-            const empTransactions = transactions.filter(t => t.employeeId === employee.id);
-            for (const t of empTransactions) {
-                const amount = parseFloat(t.amount);
-                if (t.type === 'EARNING' || t.type === 'ALLOWANCE') {
-                    gross += amount;
-                } else if (t.type === 'DEDUCTION') {
-                    deductions += amount;
-                }
-            }
-
-            // --- JAMAICA STATUTORY CALCULATIONS (2024/2025) ---
-
-            // 1. NIS (National Insurance Scheme) - Typically 3% for Employee
-            const nis = gross * 0.03;
-
-            // 2. NHT (National Housing Trust) - Typically 2% for Employee
-            const nht = gross * 0.02;
-
-            // 3. Ed Tax (Education Tax) - 2.25% of (Gross - NIS)
-            const taxableForEdTax = gross - nis;
-            const edTax = taxableForEdTax > 0 ? taxableForEdTax * 0.0225 : 0;
-
-            // 4. PAYE (Income Tax) - 25% of (Gross - NIS - Threshold)
-            // Monthly Threshold = Annual 1,500,000 / 12 = 125,000
-            const annualThreshold = 1500000;
-            const monthlyThreshold = annualThreshold / 12;
-            const taxableForPaye = gross - nis - monthlyThreshold;
-            const paye = taxableForPaye > 0 ? taxableForPaye * 0.25 : 0;
-
-            const totalTax = nis + nht + edTax + paye;
-            const net = gross - deductions - totalTax;
-
-            // Check if payroll already exists for this period
-            const existing = await prisma.payroll.findFirst({
-                where: { employeeId: employee.id, period }
-            });
-
-            const payrollData = {
-                grossSalary: gross,
-                netSalary: net,
-                deductions: deductions,
-                tax: totalTax,
-                nis: nis,
-                nht: nht,
-                edTax: edTax,
-                paye: paye,
-                status: 'Calculated'
-            };
-
-            let payrollRecord;
-            if (existing) {
-                payrollRecord = await prisma.payroll.update({
-                    where: { id: existing.id },
-                    data: payrollData
-                });
-            } else {
-                payrollRecord = await prisma.payroll.create({
-                    data: {
-                        ...payrollData,
-                        employeeId: employee.id,
-                        period: period
+                // Add posted transactions for this employee
+                const empTransactions = transactions.filter(t => t.employeeId === employee.id);
+                for (const t of empTransactions) {
+                    const amount = parseFloat(t.amount);
+                    if (t.type === 'EARNING' || t.type === 'ALLOWANCE') {
+                        gross += amount;
+                    } else if (t.type === 'DEDUCTION') {
+                        deductions += amount;
                     }
-                });
-            }
+                }
 
-            results.push(payrollRecord);
+                // --- JAMAICA STATUTORY CALCULATIONS (2024/2025) ---
+                const nis = gross * 0.03;
+                const nht = gross * 0.02;
+                const taxableForEdTax = gross - nis;
+                const edTax = taxableForEdTax > 0 ? taxableForEdTax * 0.0225 : 0;
 
-            // Mark transactions as PROCESSED
-            if (empTransactions.length > 0) {
-                await prisma.transaction.updateMany({
-                    where: {
-                        employeeId: employee.id,
-                        period,
-                        status: 'POSTED'
-                    },
-                    data: { status: 'PROCESSED' }
+                const annualThreshold = 1500000;
+                const monthlyThreshold = annualThreshold / 12;
+                const taxableForPaye = gross - nis - monthlyThreshold;
+                const paye = taxableForPaye > 0 ? taxableForPaye * 0.25 : 0;
+
+                const totalTax = nis + nht + edTax + paye;
+                const net = gross - deductions - totalTax;
+
+                const payrollData = {
+                    grossSalary: gross,
+                    netSalary: net,
+                    deductions: deductions,
+                    tax: totalTax,
+                    nis: nis,
+                    nht: nht,
+                    edTax: edTax,
+                    paye: paye,
+                    status: 'Calculated'
+                };
+
+                const existing = await prisma.payroll.findFirst({
+                    where: { employeeId: employee.id, period }
                 });
+
+                if (existing) {
+                    await prisma.payroll.update({
+                        where: { id: existing.id },
+                        data: payrollData
+                    });
+                } else {
+                    await prisma.payroll.create({
+                        data: {
+                            ...payrollData,
+                            employeeId: employee.id,
+                            period: period,
+                            companyId: companyId
+                        }
+                    });
+                }
+
+                // Mark transactions as PROCESSED
+                if (empTransactions.length > 0) {
+                    await prisma.transaction.updateMany({
+                        where: {
+                            employeeId: employee.id,
+                            period,
+                            status: 'POSTED'
+                        },
+                        data: { status: 'PROCESSED' }
+                    });
+                }
+
+                count++;
+
+                // Update progress every 5 records or at the end
+                if (count % 5 === 0 || count === employees.length) {
+                    await prisma.processingLog.update({
+                        where: { id: processingLog.id },
+                        data: { recordsProcessed: count }
+                    });
+                }
+            } catch (err) {
+                console.error(`Error processing employee ${employee.id}:`, err);
             }
         }
 
-        return successResponse(res, { count: results.length }, `${results.length} payroll records processed successfully`);
+        // --- FINALIZE LOG ---
+        await prisma.processingLog.update({
+            where: { id: processingLog.id },
+            data: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                recordsProcessed: count
+            }
+        });
+
+        return successResponse(res, { count }, `Successfully generated payroll for ${count} employees.`);
     } catch (error) {
+        // Handle failure in log if possible
         next(error);
     }
 };
