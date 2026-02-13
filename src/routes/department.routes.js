@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../config/db');
 const { successResponse } = require('../utils/response');
 const { verifyToken, requireRole } = require('../middlewares/auth');
+const { auditLog } = require('../middlewares/audit');
 
 router.use(verifyToken);
 
@@ -18,7 +19,7 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-router.post('/', requireRole('ADMIN'), async (req, res, next) => {
+router.post('/', requireRole('ADMIN'), auditLog('CREATE_DEPARTMENT', 'DEPARTMENT'), async (req, res, next) => {
     try {
         const { name } = req.body;
         if (!name) return res.status(400).json({ success: false, message: "Department name is required" });

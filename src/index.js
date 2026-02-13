@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy (required for accurate IPs on Railway/Cloud)
 const PORT = process.env.PORT || 5000;
 
 // Middleware
@@ -20,8 +21,6 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        console.log("Request Origin:", origin);
-
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
 
@@ -62,6 +61,7 @@ app.use('/api/gang-shift', require('./routes/gangShift.routes'));
 app.use('/api/sales-share', require('./routes/salesShare.routes'));
 app.use('/api/system-settings', require('./routes/systemSettings.routes'));
 app.use('/api/audit', require('./routes/audit.routes'));
+app.use('/api/files', require('./routes/file.routes'));
 
 // Root route
 app.get('/', (req, res) => {

@@ -108,8 +108,36 @@ async function main() {
     });
 
     // Users
-    const adminPass = await bcrypt.hash('admin123', 10);
-    await prisma.user.upsert({ where: { email: 'admin@islandhr.com' }, update: { password: adminPass }, create: { username: 'admin', email: 'admin@islandhr.com', password: adminPass, role: 'ADMIN' } });
+    // Users
+    const password = await bcrypt.hash('admin123', 10);
+
+    // 1. Admin
+    await prisma.user.upsert({
+        where: { email: 'admin@islandhr.com' },
+        update: { password: password, role: 'ADMIN' },
+        create: { username: 'Super Admin', email: 'admin@islandhr.com', password: password, role: 'ADMIN' }
+    });
+
+    // 2. HR Manager
+    await prisma.user.upsert({
+        where: { email: 'hr@islandhr.com' },
+        update: { password: password, role: 'HR_MANAGER' },
+        create: { username: 'HR Manager', email: 'hr@islandhr.com', password: password, role: 'HR_MANAGER' }
+    });
+
+    // 3. Finance
+    await prisma.user.upsert({
+        where: { email: 'finance@islandhr.com' },
+        update: { password: password, role: 'FINANCE' },
+        create: { username: 'Finance Officer', email: 'finance@islandhr.com', password: password, role: 'FINANCE' }
+    });
+
+    // 4. Staff
+    await prisma.user.upsert({
+        where: { email: 'staff@islandhr.com' },
+        update: { password: password, role: 'STAFF' },
+        create: { username: 'General Staff', email: 'staff@islandhr.com', password: password, role: 'STAFF' }
+    });
 
     console.log("Master Seed Completed 🚀");
 }

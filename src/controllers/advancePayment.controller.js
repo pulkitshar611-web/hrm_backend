@@ -70,46 +70,84 @@ const getAdvancePayment = async (req, res, next) => {
     }
 };
 
+// Helper to increment period string (e.g., "Feb-2026" -> "Mar-2026")
+const incrementPeriod = (period) => {
+    if (!period) return 'Mar-2026';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const parts = period.split('-');
+    if (parts.length !== 2) return period;
+
+    let [m, y] = parts;
+    let monthIdx = months.indexOf(m);
+    let year = parseInt(y);
+
+    if (monthIdx === -1) return period;
+
+    monthIdx++;
+    if (monthIdx > 11) {
+        monthIdx = 0;
+        year++;
+    }
+    return `${months[monthIdx]}-${year}`;
+};
+
 // Create advance payment request
 const createAdvancePayment = async (req, res, next) => {
     try {
         const data = req.body;
+        const reason = data.reason || data.purpose;
 
-        if (!data.companyId || !data.employeeId || !data.amount || !data.reason) {
-            return errorResponse(res, "Missing required fields", "VALIDATION_ERROR", 400);
+        if (!data.companyId || !data.employeeId || !data.amount || !reason) {
+            return errorResponse(res, "Missing required fields (companyId, employeeId, amount, reason/purpose)", "VALIDATION_ERROR", 400);
         }
 
-        // Look up employee by their employeeId field
-        const employee = await prisma.employee.findUnique({
-            where: { employeeId: data.employeeId }
+        // Look up employee by ID (UUID) or employeeId (business ID)
+        let employee = await prisma.employee.findUnique({
+            where: { id: data.employeeId }
         });
+
+        if (!employee) {
+            employee = await prisma.employee.findUnique({
+                where: { employeeId: data.employeeId }
+            });
+        }
 
         if (!employee) {
             return errorResponse(res, `Employee with ID ${data.employeeId} not found`, "NOT_FOUND", 404);
         }
 
-        // Check if employee has pending advance payments
-        const pendingAdvances = await prisma.advancePayment.findMany({
-            where: {
-                employeeId: employee.id,
-                status: { in: ['PENDING', 'APPROVED'] }
-            }
-        });
+        const requestedStatus = data.status || 'PENDING';
 
-        if (pendingAdvances.length > 0) {
-            return errorResponse(res, "Employee has pending advance payment requests", "PENDING_REQUEST", 400);
+        // Check if employee has pending advance payments (only for new PENDING requests)
+        if (requestedStatus === 'PENDING') {
+            const pendingAdvances = await prisma.advancePayment.findMany({
+                where: {
+                    employeeId: employee.id,
+                    status: { in: ['PENDING', 'APPROVED'] }
+                }
+            });
+
+            if (pendingAdvances.length > 0) {
+                return errorResponse(res, "Employee has pending advance payment requests", "PENDING_REQUEST", 400);
+            }
         }
+
+        const installments = parseInt(data.installments || 1);
+        const deductionStart = data.deductionStart || null;
 
         const advancePayment = await prisma.advancePayment.create({
             data: {
                 companyId: data.companyId,
                 employeeId: employee.id,
                 amount: parseFloat(data.amount),
-                reason: data.reason,
+                reason: reason,
                 requestDate: data.requestDate ? new Date(data.requestDate) : new Date(),
-                status: 'PENDING',
-                deductionStart: data.deductionStart || null,
-                installments: data.installments || null
+                status: requestedStatus,
+                deductionStart: deductionStart,
+                installments: installments,
+                approvedBy: data.approvedBy || null,
+                approvedDate: requestedStatus !== 'PENDING' ? new Date() : null,
+                paymentDate: requestedStatus === 'PAID' ? (data.paymentDate ? new Date(data.paymentDate) : new Date()) : null
             },
             include: {
                 employee: true,
@@ -117,7 +155,51 @@ const createAdvancePayment = async (req, res, next) => {
             }
         });
 
-        return successResponse(res, advancePayment, "Advance payment request created successfully", 201);
+        // --- HR FINANCE INTEGRATION FLOW ---
+        if (requestedStatus === 'PAID') {
+            // 1. Create Bank Transfer Record (for Electronic Payments module)
+            if (employee.bankAccount && employee.bankName) {
+                await prisma.bankTransfer.create({
+                    data: {
+                        companyId: data.companyId,
+                        employeeId: employee.id,
+                        bankName: employee.bankName,
+                        accountNumber: employee.bankAccount,
+                        accountName: `${employee.firstName} ${employee.lastName}`,
+                        amount: parseFloat(data.amount),
+                        reference: `ADV-${employee.employeeId}-${Date.now()}`,
+                        transferDate: new Date(),
+                        status: 'PENDING'
+                    }
+                });
+            }
+
+            // 2. Schedule Deduction Transactions (for Payroll Calculation)
+            if (deductionStart) {
+                const installmentAmount = parseFloat(data.amount) / installments;
+                let currentPeriod = deductionStart;
+
+                for (let i = 0; i < installments; i++) {
+                    await prisma.transaction.create({
+                        data: {
+                            companyId: data.companyId,
+                            employeeId: employee.id,
+                            transactionDate: new Date(),
+                            type: 'DEDUCTION',
+                            code: 'LOAN_REPAY',
+                            description: `Loan Repayment (${i + 1}/${installments}) - ${reason}`,
+                            amount: installmentAmount,
+                            status: 'POSTED', // Already posted so it's included in payroll
+                            period: currentPeriod,
+                            enteredBy: 'FIN_MODULE'
+                        }
+                    });
+                    currentPeriod = incrementPeriod(currentPeriod);
+                }
+            }
+        }
+
+        return successResponse(res, advancePayment, "Advance payment record created and integrated successfully", 201);
     } catch (error) {
         next(error);
     }
