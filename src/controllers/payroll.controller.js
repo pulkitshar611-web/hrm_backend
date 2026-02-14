@@ -309,6 +309,36 @@ const finalizeBatch = async (req, res, next) => {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
         }
 
+        // --- PROCESSING LOG INITIALIZATION ---
+        const processingLog = await prisma.processingLog.create({
+            data: {
+                companyId,
+                processType: 'PAYROLL_UPDATE',
+                period,
+                status: 'STARTED',
+                recordsTotal: 0,
+                recordsProcessed: 0,
+                processedBy: req.user?.email || 'System'
+            }
+        });
+
+        // Fetch count of records to be finalized
+        const recordsToFinalize = await prisma.payroll.count({
+            where: {
+                period,
+                employee: { companyId },
+                status: 'Calculated'
+            }
+        });
+
+        await prisma.processingLog.update({
+            where: { id: processingLog.id },
+            data: {
+                recordsTotal: recordsToFinalize,
+                status: 'IN_PROGRESS'
+            }
+        });
+
         const results = await prisma.payroll.updateMany({
             where: {
                 period,
@@ -316,6 +346,16 @@ const finalizeBatch = async (req, res, next) => {
                 status: 'Calculated'
             },
             data: { status: 'Finalized' }
+        });
+
+        // --- FINALIZE LOG ---
+        await prisma.processingLog.update({
+            where: { id: processingLog.id },
+            data: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                recordsProcessed: results.count
+            }
         });
 
         return successResponse(res, { count: results.count }, `${results.count} payroll records finalized successfully`);

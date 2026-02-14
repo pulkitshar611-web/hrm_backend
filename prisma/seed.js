@@ -34,12 +34,11 @@ async function main() {
     }
     const allDepts = await prisma.department.findMany();
 
-    // 3. Employees
+    // 3. Employees (Professional Baseline Data)
     const empData = [
-        { id: 'EMP101', fn: 'JOHN', ln: 'DOE', dept: 'ACCOUNTING', sal: 155000, bank: 'BNS', acc: '001234', des: 'GRADE 1', city: 'Kingston HQ', freq: 'Monthly' },
-        { id: 'EMP102', fn: 'SARAH', ln: 'SMITH', dept: 'OPERATIONS', sal: 285000, bank: 'NCB', acc: '998877', des: 'GRADE 2', city: 'Montego Bay', freq: 'Monthly' },
-        { id: 'EMP204', fn: 'MIKE', ln: 'ROSS', dept: 'IT / MIS', sal: 195000, bank: 'BNS', acc: '445566', des: 'GRADE 1', city: 'Kingston HQ', freq: 'Monthly' },
-        { id: 'EMP205', fn: 'PETER', ln: 'PARKER', dept: 'IT / MIS', sal: 165000, bank: 'NCB', acc: '881122', des: 'GRADE 3', city: 'Kingston HQ', freq: 'Weekly' }
+        { id: 'PW-1001', fn: 'DAVID', ln: 'WILSON', dept: 'ACCOUNTING', sal: 165000, bank: 'BNS', acc: '827101', des: 'FINANCE LEAD', city: 'KINGSTON HQ', freq: 'MONTHLY' },
+        { id: 'PW-1002', fn: 'SARAH', ln: 'JOHNSON', dept: 'OPERATIONS', sal: 245000, bank: 'NCB', acc: '109283', des: 'OPS COORDINATOR', city: 'MONTEGO BAY', freq: 'MONTHLY' },
+        { id: 'PW-1003', fn: 'MICHAEL', ln: 'CHEN', dept: 'IT / MIS', sal: 195000, bank: 'BNS', acc: '662091', des: 'SYSTEMS ARCHITECT', city: 'KINGSTON HQ', freq: 'MONTHLY' }
     ];
 
     for (const e of empData) {
@@ -48,7 +47,8 @@ async function main() {
             update: {
                 designation: e.des,
                 city: e.city,
-                payFrequency: e.freq
+                payFrequency: e.freq,
+                baseSalary: e.sal
             },
             create: {
                 employeeId: e.id,
@@ -69,46 +69,29 @@ async function main() {
     }
     const allEmps = await prisma.employee.findMany();
 
-    // 4. Transactions (ENTERED)
-    console.log("Creating Entry Stream...");
-    await prisma.transaction.createMany({
-        data: [
-            { companyId: company.id, employeeId: allEmps[0].id, transactionDate: new Date(), type: 'EARNING', code: 'BSAL', description: 'Basic Salary', amount: 77500, units: 1, rate: 77500, status: 'ENTERED', period: 'Feb-2026', enteredBy: 'admin@islandhr.com' }
-        ]
-    });
+    // 4. Staged Advance Payment (for immediate visualization)
+    const firstEmp = await prisma.employee.findFirst({ where: { employeeId: 'PW-1001' } });
+    if (firstEmp) {
+        await prisma.advancePayment.upsert({
+            where: {
+                id: 'seed-adv-1' // Stable ID for seeding
+            },
+            update: {},
+            create: {
+                id: 'seed-adv-1',
+                companyId: company.id,
+                employeeId: firstEmp.id,
+                amount: 25000,
+                reason: 'Emergency Medical Expense',
+                status: 'PENDING',
+                requestDate: new Date(),
+                installments: 3,
+                deductionStart: 'MAR-2026'
+            }
+        });
+    }
 
-    // 5. Payrolls
-    console.log("Seeding Payroll Batches for JAN and FEB...");
-    await prisma.payroll.deleteMany({ where: { period: { in: ['Jan-2026', 'Feb-2026'] } } });
-    await prisma.payroll.createMany({
-        data: [
-            // JAN
-            { employeeId: allEmps[0].id, period: 'Jan-2026', grossSalary: 155000, netSalary: 124000, deductions: 31000, tax: 23250, status: 'Finalized' },
-            // FEB (Matches your filter)
-            { employeeId: allEmps[0].id, period: 'Feb-2026', grossSalary: 155000, netSalary: 124000, deductions: 31000, tax: 23250, status: 'Finalized' },
-            { employeeId: allEmps[1].id, period: 'Feb-2026', grossSalary: 285000, netSalary: 228000, deductions: 57000, tax: 42750, status: 'Finalized' },
-            { employeeId: allEmps[2].id, period: 'Feb-2026', grossSalary: 195000, netSalary: 156000, deductions: 39000, tax: 29250, status: 'Finalized' }
-        ]
-    });
-
-    // 6. Processing Logs (For Status page)
-    console.log("Logging historical activities...");
-    await prisma.processingLog.create({
-        data: {
-            companyId: company.id,
-            processType: 'PAYROLL_CALC',
-            period: 'Jan-2026',
-            status: 'COMPLETED',
-            recordsTotal: 4,
-            recordsProcessed: 4,
-            processedBy: 'admin@islandhr.com',
-            startedAt: new Date(Date.now() - 3600000),
-            completedAt: new Date()
-        }
-    });
-
-    // Users
-    // Users
+    // 5. Users
     const password = await bcrypt.hash('admin123', 10);
 
     // 1. Admin
