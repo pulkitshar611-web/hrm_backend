@@ -253,8 +253,7 @@ const generatePayrolls = async (req, res, next) => {
                         data: {
                             ...payrollData,
                             employeeId: employee.id,
-                            period: period,
-                            companyId: companyId
+                            period: period
                         }
                     });
                 }

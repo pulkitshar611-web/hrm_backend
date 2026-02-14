@@ -16,7 +16,7 @@ const { verifyToken, requireRole } = require('../middlewares/auth');
 const { auditLog } = require('../middlewares/audit');
 
 router.use(verifyToken);
-router.use(requireRole('ADMIN'));
+router.use(requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']));
 
 router.get('/', getPayrolls);
 router.get('/batches', getPayrollBatches);
