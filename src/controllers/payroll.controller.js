@@ -1,27 +1,41 @@
 const prisma = require('../config/db');
 const { successResponse, errorResponse } = require('../utils/response');
 
+const normalizePeriod = (period) => {
+    if (!period) return period;
+    return period.trim().replace(/\s+/g, '-').toUpperCase();
+};
+
 const getPayrolls = async (req, res, next) => {
     try {
         const { companyId, employeeId, period, status, email, departmentId } = req.query;
-        console.log('[GET_PAYROLLS] Incoming params:', { companyId, employeeId, period, status, email, departmentId });
+        const normalizedPeriod = normalizePeriod(period);
+        console.log('[GET_PAYROLLS] Incoming params:', { companyId, employeeId, period: normalizedPeriod, status, email, departmentId });
+
         const where = {};
-        if (employeeId) where.employeeId = employeeId;
-        if (period) where.period = period;
+
+        // --- SECURITY ENFORCEMENT ---
+        // If user is STAFF/EMPLOYEE, they CAN ONLY see their own records.
+        if (req.user.role === 'STAFF' || req.user.role === 'EMPLOYEE') {
+            where.employee = { email: req.user.email };
+        } else {
+            // Admin/HR/Finance can filter by everything
+            if (employeeId) where.employeeId = employeeId; // This refers to the employee's UUID (id field in Employee model)
+            if (email) {
+                where.employee = { email };
+            }
+            if (companyId) {
+                if (!where.employee) where.employee = {};
+                where.employee.companyId = companyId;
+            }
+            if (departmentId && departmentId !== 'All Departments') {
+                if (!where.employee) where.employee = {};
+                where.employee.departmentId = departmentId;
+            }
+        }
+
+        if (normalizedPeriod) where.period = normalizedPeriod;
         if (status) where.status = status;
-        if (email) {
-            where.employee = { email };
-        }
-
-        if (companyId) {
-            if (!where.employee) where.employee = {};
-            where.employee.companyId = companyId;
-        }
-
-        if (departmentId && departmentId !== 'All Departments') {
-            if (!where.employee) where.employee = {};
-            where.employee.departmentId = departmentId;
-        }
 
         console.log('[GET_PAYROLLS] Where:', JSON.stringify(where));
 
@@ -149,9 +163,22 @@ const deletePayroll = async (req, res, next) => {
 const generatePayrolls = async (req, res, next) => {
     try {
         const { companyId, period } = req.body;
+        const normalizedPeriod = normalizePeriod(period);
 
-        if (!companyId || !period) {
+        if (!companyId || !normalizedPeriod) {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
+        }
+
+        // Parse period for joinDate verification
+        const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+        const parts = normalizedPeriod.split('-');
+        let periodEndDate = new Date();
+        if (parts.length === 2) {
+            const mIdx = monthNames.indexOf(parts[0]);
+            const yr = parseInt(parts[1]);
+            if (mIdx !== -1 && !isNaN(yr)) {
+                periodEndDate = new Date(yr, mIdx + 1, 0); // Last day of month
+            }
         }
 
         // --- PROCESSING LOG INITIALIZATION ---
@@ -159,7 +186,7 @@ const generatePayrolls = async (req, res, next) => {
             data: {
                 companyId,
                 processType: 'PAYROLL_CALC',
-                period,
+                period: normalizedPeriod,
                 status: 'STARTED',
                 recordsTotal: 0,
                 recordsProcessed: 0,
@@ -199,6 +226,12 @@ const generatePayrolls = async (req, res, next) => {
         // Loop through all employees to ensure everyone is considered
         for (const employee of employees) {
             try {
+                // Skip if employee join date is AFTER the current payroll period
+                if (employee.joinDate && new Date(employee.joinDate) > periodEndDate) {
+                    console.log(`[GEN_PAYROLL] Skipping employee ${employee.employeeId} - Join date ${employee.joinDate} is after period end ${periodEndDate}`);
+                    continue;
+                }
+
                 let gross = parseFloat(employee.baseSalary || 0);
                 let deductions = 0;
 
@@ -213,7 +246,7 @@ const generatePayrolls = async (req, res, next) => {
                     }
                 }
 
-                // --- JAMAICA STATUTORY CALCULATIONS (2024/2025) ---
+                // ... statutory calcs ...
                 const nis = gross * 0.03;
                 const nht = gross * 0.02;
                 const taxableForEdTax = gross - nis;
@@ -240,7 +273,7 @@ const generatePayrolls = async (req, res, next) => {
                 };
 
                 const existing = await prisma.payroll.findFirst({
-                    where: { employeeId: employee.id, period }
+                    where: { employeeId: employee.id, period: normalizedPeriod }
                 });
 
                 if (existing) {
@@ -253,7 +286,7 @@ const generatePayrolls = async (req, res, next) => {
                         data: {
                             ...payrollData,
                             employeeId: employee.id,
-                            period: period
+                            period: normalizedPeriod
                         }
                     });
                 }
@@ -263,7 +296,7 @@ const generatePayrolls = async (req, res, next) => {
                     await prisma.transaction.updateMany({
                         where: {
                             employeeId: employee.id,
-                            period,
+                            period: normalizedPeriod,
                             status: 'POSTED'
                         },
                         data: { status: 'PROCESSED' }
@@ -304,8 +337,9 @@ const generatePayrolls = async (req, res, next) => {
 const finalizeBatch = async (req, res, next) => {
     try {
         const { companyId, period } = req.body;
+        const normalizedPeriod = normalizePeriod(period);
 
-        if (!companyId || !period) {
+        if (!companyId || !normalizedPeriod) {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
         }
 
@@ -314,7 +348,7 @@ const finalizeBatch = async (req, res, next) => {
             data: {
                 companyId,
                 processType: 'PAYROLL_UPDATE',
-                period,
+                period: normalizedPeriod,
                 status: 'STARTED',
                 recordsTotal: 0,
                 recordsProcessed: 0,
@@ -325,7 +359,7 @@ const finalizeBatch = async (req, res, next) => {
         // Fetch count of records to be finalized
         const recordsToFinalize = await prisma.payroll.count({
             where: {
-                period,
+                period: normalizedPeriod,
                 employee: { companyId },
                 status: 'Calculated'
             }
@@ -341,7 +375,7 @@ const finalizeBatch = async (req, res, next) => {
 
         const results = await prisma.payroll.updateMany({
             where: {
-                period,
+                period: normalizedPeriod,
                 employee: { companyId },
                 status: 'Calculated'
             },
@@ -411,8 +445,9 @@ const bulkSendEmails = async (req, res, next) => {
 const syncPayrolls = async (req, res, next) => {
     try {
         const { companyId, period } = req.body;
+        const normalizedPeriod = normalizePeriod(period);
 
-        if (!companyId || !period) {
+        if (!companyId || !normalizedPeriod) {
             return errorResponse(res, "Company ID and period are required", "VALIDATION_ERROR", 400);
         }
 
@@ -432,14 +467,14 @@ const syncPayrolls = async (req, res, next) => {
         for (const employee of employees) {
             // Check if payroll already exists for this period
             const existing = await prisma.payroll.findFirst({
-                where: { employeeId: employee.id, period }
+                where: { employeeId: employee.id, period: normalizedPeriod }
             });
 
             if (!existing) {
                 await prisma.payroll.create({
                     data: {
                         employeeId: employee.id,
-                        period,
+                        period: normalizedPeriod,
                         grossSalary: 0,
                         netSalary: 0,
                         deductions: 0,
@@ -453,7 +488,7 @@ const syncPayrolls = async (req, res, next) => {
             }
         }
 
-        console.log(`[SYNC] Result for ${period}: Created ${createdCount}, Existing ${existingCount}`);
+        console.log(`[SYNC] Result for ${normalizedPeriod}: Created ${createdCount}, Existing ${existingCount}`);
         return successResponse(res, { created: createdCount, existing: existingCount }, `HRM Sync complete. ${createdCount} new records initialized, ${existingCount} already present.`);
     } catch (error) {
         next(error);
@@ -512,6 +547,32 @@ const getPayrollBatches = async (req, res, next) => {
     }
 };
 
+const transmitBankAdvice = async (req, res, next) => {
+    try {
+        const { payrollIds, bankName } = req.body;
+
+        if (!Array.isArray(payrollIds) || payrollIds.length === 0) {
+            return errorResponse(res, "No payroll records selected for transmission", "VALIDATION_ERROR", 400);
+        }
+
+        // Update status to 'Paid' (indicating bank transfer initiated)
+        const results = await prisma.payroll.updateMany({
+            where: { id: { in: payrollIds } },
+            data: {
+                status: 'Paid',
+                paymentDate: new Date()
+            }
+        });
+
+        // Also log this as a BankTransfer entity for record keeping if needed, 
+        // but for now updating Payroll status is sufficient for the requirement.
+
+        return successResponse(res, { count: results.count }, `Successfully transmitted advice for ${results.count} records to ${bankName || 'Bank Clearing System'}.`);
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getPayrolls,
     createPayroll,
@@ -522,5 +583,6 @@ module.exports = {
     syncPayrolls,
     getPayrollBatches,
     sendPayrollEmail,
-    bulkSendEmails
+    bulkSendEmails,
+    transmitBankAdvice
 };

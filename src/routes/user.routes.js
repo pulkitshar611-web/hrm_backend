@@ -22,6 +22,38 @@ router.get('/me', async (req, res, next) => {
     }
 });
 
+// Update user security (password)
+router.put('/security', auditLog('CHANGE_PASSWORD', 'USER_SELF'), async (req, res, next) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return errorResponse(res, "Current and new passwords are required", "VALIDATION_ERROR", 400);
+        }
+
+        // Get user for password verification
+        const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+        if (!user) return errorResponse(res, "User not found", "NOT_FOUND", 404);
+
+        // Verify current password
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return errorResponse(res, "Incorrect current password", "AUTH_FAILED", 401);
+        }
+
+        // Hash new password and update
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { password: hashedPassword }
+        });
+
+        return successResponse(res, null, "Security credentials updated successfully");
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.put('/preferences', async (req, res, next) => {
     try {
         const { windowPreferences } = req.body;

@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../middlewares/auth');
 const { auditLog } = require('../middlewares/audit');
 
 router.use(verifyToken);
-router.use(requireRole('ADMIN')); // Restrict to Admin for now
+router.use(requireRole(['ADMIN', 'HR_MANAGER'])); // Restrict to Admin and HR Manager
 
 router.get('/live', getLiveAttendance);
 router.get('/', getAttendance);
