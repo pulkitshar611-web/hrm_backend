@@ -5,9 +5,10 @@ const {
     getAssignments,
     saveAssignments
 } = require('../controllers/gangShift.controller');
-const { verifyToken } = require('../middlewares/auth');
+const { verifyToken, requireRole } = require('../middlewares/auth');
 
 router.use(verifyToken);
+router.use(requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE', 'SUPERVISOR']));
 
 router.get('/gangs', getGangs);
 router.get('/assignments', getAssignments);

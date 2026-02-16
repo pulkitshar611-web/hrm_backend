@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../middlewares/auth');
 const { auditLog } = require('../middlewares/audit');
 
 router.use(verifyToken);
-router.use(requireRole('ADMIN')); // Only Admin for Phase 1
+router.use(requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']));
 
 router.get('/', verifyToken, employeeController.getEmployees);
 router.post('/', verifyToken, auditLog('CREATE_EMPLOYEE', 'EMPLOYEE'), employeeController.createEmployee);
