@@ -5,6 +5,7 @@ const getCompanies = async (req, res, next) => {
     try {
         const userRole = req.user.role;
         const userId = req.user.id;
+        const userEmail = req.user.email;
 
         // ADMIN users see all companies
         if (userRole === 'ADMIN') {
@@ -18,11 +19,21 @@ const getCompanies = async (req, res, next) => {
             include: { company: true }
         });
 
-        if (!user || !user.company) {
-            return successResponse(res, []);
+        if (user && user.company) {
+            return successResponse(res, [user.company]);
         }
 
-        return successResponse(res, [user.company]);
+        // Fallback: If User record doesn't have a company, check Employee records by email
+        const employee = await prisma.employee.findFirst({
+            where: { email: userEmail },
+            include: { company: true }
+        });
+
+        if (employee && employee.company) {
+            return successResponse(res, [employee.company]);
+        }
+
+        return successResponse(res, []);
     } catch (error) {
         next(error);
     }

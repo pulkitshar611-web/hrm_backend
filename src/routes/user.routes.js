@@ -107,14 +107,15 @@ router.post('/', auditLog('CREATE_USER', 'USER'), async (req, res, next) => {
 router.put('/:id', auditLog('UPDATE_USER', 'USER'), async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { username, email, role, password } = req.body;
+        const { username, email, role, password, companyId } = req.body;
         const updateData = { username, email, role };
         if (password) updateData.password = await bcrypt.hash(password, 10);
+        if (companyId) updateData.companyId = companyId;
 
         const user = await prisma.user.update({
             where: { id },
             data: updateData,
-            select: { id: true, username: true, email: true, role: true }
+            select: { id: true, username: true, email: true, role: true, companyId: true }
         });
         return successResponse(res, user, "User updated successfully");
     } catch (error) {
