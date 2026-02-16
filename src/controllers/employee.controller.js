@@ -167,4 +167,38 @@ const bulkUpdateEmployees = async (req, res, next) => {
     }
 };
 
-module.exports = { getEmployees, createEmployee, updateEmployee, deleteEmployee, bulkUpdateEmployees };
+const updateSelfProfile = async (req, res, next) => {
+    try {
+        const userEmail = req.user.email;
+        const d = req.body;
+
+        // Find employee by email to ensure ownership
+        const employee = await prisma.employee.findFirst({
+            where: { email: userEmail }
+        });
+
+        if (!employee) {
+            return errorResponse(res, "Employee profile not found. Please contact HR.", "NOT_FOUND", 404);
+        }
+
+        // Allow update of only specific safe fields
+        const safeUpdates = {};
+        if (d.phone !== undefined) safeUpdates.phone = d.phone;
+        if (d.street !== undefined) safeUpdates.street = d.street;
+        if (d.city !== undefined) safeUpdates.city = d.city;
+        if (d.parish !== undefined) safeUpdates.parish = d.parish;
+        if (d.bankName !== undefined) safeUpdates.bankName = d.bankName;
+        if (d.bankAccount !== undefined) safeUpdates.bankAccount = d.bankAccount;
+
+        const updated = await prisma.employee.update({
+            where: { id: employee.id },
+            data: safeUpdates
+        });
+
+        return successResponse(res, updated, "Profile synchronized successfully");
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getEmployees, createEmployee, updateEmployee, deleteEmployee, bulkUpdateEmployees, updateSelfProfile };

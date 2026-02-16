@@ -70,18 +70,19 @@ const getAdvancePayment = async (req, res, next) => {
     }
 };
 
-// Helper to increment period string (e.g., "Feb-2026" -> "Mar-2026")
+// Helper to increment period string (e.g., "FEB-2026" -> "MAR-2026")
 const incrementPeriod = (period) => {
-    if (!period) return 'Mar-2026';
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (!period) return 'MAR-2026';
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const parts = period.split('-');
-    if (parts.length !== 2) return period;
+    if (parts.length !== 2) return period.toUpperCase();
 
     let [m, y] = parts;
+    m = m.toUpperCase();
     let monthIdx = months.indexOf(m);
     let year = parseInt(y);
 
-    if (monthIdx === -1) return period;
+    if (monthIdx === -1) return period.toUpperCase();
 
     monthIdx++;
     if (monthIdx > 11) {
@@ -89,6 +90,54 @@ const incrementPeriod = (period) => {
         year++;
     }
     return `${months[monthIdx]}-${year}`;
+};
+
+// Internal Helper: Execute Disbursement (Shared between Direct Creation and Approval Flow)
+const executeDisbursementInternal = async (advancePayment, employee) => {
+    const { id, companyId, amount, reason, installments, deductionStart } = advancePayment;
+
+    // 1. Create Bank Transfer Record (for Electronic Payments module)
+    if (employee.bankAccount && employee.bankName) {
+        await prisma.bankTransfer.create({
+            data: {
+                companyId: companyId,
+                employeeId: employee.id,
+                bankName: employee.bankName,
+                accountNumber: employee.bankAccount,
+                accountName: `${employee.firstName} ${employee.lastName}`,
+                amount: parseFloat(amount),
+                reference: `ADV-${employee.employeeId}-${Date.now()}`,
+                transferDate: new Date(),
+                status: 'PENDING'
+            }
+        });
+    }
+
+    // 2. Schedule Deduction Transactions (for Payroll Calculation)
+    if (deductionStart) {
+        const installmentAmount = parseFloat(amount) / installments;
+        let currentPeriod = deductionStart.toUpperCase();
+
+        for (let i = 0; i < installments; i++) {
+            await prisma.transaction.create({
+                data: {
+                    companyId: companyId,
+                    employeeId: employee.id,
+                    transactionDate: new Date(),
+                    type: 'DEDUCTION',
+                    code: 'LOAN_REPAY',
+                    description: `Loan Repayment (${i + 1}/${installments}) - ${reason}`,
+                    amount: installmentAmount,
+                    status: 'POSTED', // Already posted so it's included in payroll
+                    period: currentPeriod,
+                    enteredBy: 'FIN_MODULE'
+                }
+            });
+            currentPeriod = incrementPeriod(currentPeriod);
+        }
+    }
+
+    return true;
 };
 
 // Create advance payment request
@@ -157,46 +206,7 @@ const createAdvancePayment = async (req, res, next) => {
 
         // --- HR FINANCE INTEGRATION FLOW ---
         if (requestedStatus === 'PAID') {
-            // 1. Create Bank Transfer Record (for Electronic Payments module)
-            if (employee.bankAccount && employee.bankName) {
-                await prisma.bankTransfer.create({
-                    data: {
-                        companyId: data.companyId,
-                        employeeId: employee.id,
-                        bankName: employee.bankName,
-                        accountNumber: employee.bankAccount,
-                        accountName: `${employee.firstName} ${employee.lastName}`,
-                        amount: parseFloat(data.amount),
-                        reference: `ADV-${employee.employeeId}-${Date.now()}`,
-                        transferDate: new Date(),
-                        status: 'PENDING'
-                    }
-                });
-            }
-
-            // 2. Schedule Deduction Transactions (for Payroll Calculation)
-            if (deductionStart) {
-                const installmentAmount = parseFloat(data.amount) / installments;
-                let currentPeriod = deductionStart;
-
-                for (let i = 0; i < installments; i++) {
-                    await prisma.transaction.create({
-                        data: {
-                            companyId: data.companyId,
-                            employeeId: employee.id,
-                            transactionDate: new Date(),
-                            type: 'DEDUCTION',
-                            code: 'LOAN_REPAY',
-                            description: `Loan Repayment (${i + 1}/${installments}) - ${reason}`,
-                            amount: installmentAmount,
-                            status: 'POSTED', // Already posted so it's included in payroll
-                            period: currentPeriod,
-                            enteredBy: 'FIN_MODULE'
-                        }
-                    });
-                    currentPeriod = incrementPeriod(currentPeriod);
-                }
-            }
+            await executeDisbursementInternal(advancePayment, employee);
         }
 
         return successResponse(res, advancePayment, "Advance payment record created and integrated successfully", 201);
@@ -336,7 +346,10 @@ const markAsPaid = async (req, res, next) => {
             }
         });
 
-        return successResponse(res, updated, "Advance payment marked as paid");
+        // --- INTEGRATION: TRIGGER DISBURSEMENT ON PAYMENT ---
+        await executeDisbursementInternal(updated, updated.employee);
+
+        return successResponse(res, updated, "Advance payment marked as paid and integrated");
     } catch (error) {
         next(error);
     }

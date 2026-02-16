@@ -65,4 +65,111 @@ const getAdminStats = async (req, res, next) => {
     }
 };
 
-module.exports = { getAdminStats };
+const getEmployeeStats = async (req, res, next) => {
+    try {
+        const userEmail = req.user.email;
+
+        // 1. Find the employee record linked to this user's email
+        const employee = await prisma.employee.findUnique({
+            where: { email: userEmail },
+            include: {
+                company: true,
+                payrolls: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 5
+                },
+                leaves: {
+                    where: { status: 'Approved' }
+                },
+                advancePayments: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 3
+                }
+            }
+        });
+
+        if (!employee) {
+            // Return dummy or empty if no link exists yet
+            return successResponse(res, {
+                stats: [
+                    { label: 'Next Pay Date', value: 'N/A', sub: 'Contact HR' },
+                    { label: 'Leave Balance', value: '0 Days', sub: 'Vacation Time' },
+                    { label: 'Net Pay (Last)', value: '$0.00', sub: 'No Records' },
+                    { label: 'Tax Status', value: 'Pending', sub: 'Verify Profile' },
+                ],
+                recentDocuments: []
+            });
+        }
+
+        // 2. Calculate Next Pay Date (Simplified logic: 28th of current or next month)
+        const now = new Date();
+        let payDate = new Date(now.getFullYear(), now.getMonth(), 28);
+        if (now.getDate() > 28) {
+            payDate.setMonth(payDate.getMonth() + 1);
+        }
+        const diffDays = Math.ceil((payDate - now) / (1000 * 60 * 60 * 24));
+        const nextPayDateStr = payDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        // 3. Calculate Leave Balance (Baseline 14 - approved)
+        // In a real system, this would be stored or calculated from accruals
+        const approvedLeaveDays = employee.leaves.reduce((sum, l) => {
+            const start = new Date(l.startDate);
+            const end = new Date(l.endDate);
+            const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+            return sum + days;
+        }, 0);
+        const leaveBalance = Math.max(0, 14 - approvedLeaveDays);
+
+        // 4. Get Last Net Pay
+        const lastPayroll = employee.payrolls[0];
+        const lastNetPay = lastPayroll ? lastPayroll.netSalary : 0;
+        const lastPayMonth = lastPayroll ? lastPayroll.period : 'N/A';
+
+        // 5. Recent Documents
+        const recentDocuments = [
+            ...employee.payrolls.map(p => ({
+                name: `Payslip_${p.period}.pdf`,
+                date: new Date(p.createdAt).toLocaleDateString(),
+                type: 'PAY',
+                rawDate: p.createdAt
+            })),
+            ...employee.advancePayments.map(a => ({
+                name: `Advance_${a.id.substring(0, 5)}.pdf`,
+                date: new Date(a.createdAt).toLocaleDateString(),
+                type: 'FIN',
+                rawDate: a.createdAt
+            }))
+        ].sort((a, b) => new Date(b.rawDate) - new Date(a.rawDate)).slice(0, 5);
+
+        const response = {
+            stats: [
+                { label: 'Next Pay Date', value: nextPayDateStr, sub: `in ${diffDays} days` },
+                { label: 'Leave Balance', value: `${leaveBalance} Days`, sub: 'Vacation Time' },
+                { label: 'Net Pay (Last)', value: `$${(parseFloat(lastNetPay) / 1000).toFixed(1)}k`, sub: lastPayMonth },
+                { label: 'Tax Status', value: 'Compliant', sub: 'P24 Available' },
+            ],
+            recentDocuments,
+            employee: {
+                id: employee.id,
+                employeeId: employee.employeeId,
+                firstName: employee.firstName,
+                lastName: employee.lastName,
+                email: employee.email,
+                designation: employee.designation,
+                phone: employee.phone,
+                street: employee.street,
+                city: employee.city,
+                parish: employee.parish,
+                bankName: employee.bankName,
+                bankAccount: employee.bankAccount,
+                status: employee.status
+            }
+        };
+
+        return successResponse(res, response);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getAdminStats, getEmployeeStats };
