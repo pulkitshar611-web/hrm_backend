@@ -3,8 +3,26 @@ const { successResponse, errorResponse } = require('../utils/response');
 
 const getCompanies = async (req, res, next) => {
     try {
-        const companies = await prisma.company.findMany();
-        return successResponse(res, companies);
+        const userRole = req.user.role;
+        const userId = req.user.id;
+
+        // ADMIN users see all companies
+        if (userRole === 'ADMIN') {
+            const companies = await prisma.company.findMany();
+            return successResponse(res, companies);
+        }
+
+        // Non-admin users see only their assigned company
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { company: true }
+        });
+
+        if (!user || !user.company) {
+            return successResponse(res, []);
+        }
+
+        return successResponse(res, [user.company]);
     } catch (error) {
         next(error);
     }

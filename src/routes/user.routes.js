@@ -84,16 +84,19 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', auditLog('CREATE_USER', 'USER'), async (req, res, next) => {
     try {
-        const { username, email, password, role } = req.body;
+        const { username, email, password, role, companyId } = req.body;
 
         if (!username || !email || !password || !role) {
             return errorResponse(res, "All fields are required", "VALIDATION_ERROR", 400);
         }
 
+        // ADMIN users should not have a companyId
+        const finalCompanyId = role === 'ADMIN' ? null : companyId;
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = await prisma.user.create({
-            data: { username, email, password: hashedPassword, role },
-            select: { id: true, username: true, email: true, role: true }
+            data: { username, email, password: hashedPassword, role, companyId: finalCompanyId },
+            select: { id: true, username: true, email: true, role: true, companyId: true }
         });
         return successResponse(res, user, "System user created successfully", 201);
     } catch (error) {

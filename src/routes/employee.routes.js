@@ -11,9 +11,9 @@ router.use(verifyToken);
 router.put('/profile', auditLog('UPDATE_PROFILE', 'EMPLOYEE_SELF'), employeeController.updateSelfProfile);
 
 router.get('/', requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']), employeeController.getEmployees);
-router.post('/', requireRole(['ADMIN', 'HR_MANAGER']), auditLog('CREATE_EMPLOYEE', 'EMPLOYEE'), employeeController.createEmployee);
-router.put('/bulk-update', requireRole(['ADMIN', 'HR_MANAGER']), employeeController.bulkUpdateEmployees);
-router.put('/:id', requireRole(['ADMIN', 'HR_MANAGER']), auditLog('UPDATE_EMPLOYEE', 'EMPLOYEE'), employeeController.updateEmployee);
+router.post('/', requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']), auditLog('CREATE_EMPLOYEE', 'EMPLOYEE'), employeeController.createEmployee);
+router.put('/bulk-update', requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']), employeeController.bulkUpdateEmployees);
+router.put('/:id', requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']), auditLog('UPDATE_EMPLOYEE', 'EMPLOYEE'), employeeController.updateEmployee);
 router.delete('/:id', requireRole(['ADMIN', 'HR_MANAGER']), auditLog('DELETE_EMPLOYEE', 'EMPLOYEE'), employeeController.deleteEmployee);
 
 module.exports = router;

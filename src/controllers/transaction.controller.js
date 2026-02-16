@@ -77,9 +77,17 @@ const createTransaction = async (req, res, next) => {
         }
 
         // Look up employee by their employeeId field (e.g., "EMP001")
-        const employee = await prisma.employee.findUnique({
+        // If the ID provided is not found as employeeId, check if it's already a UUID (id)
+        let employee = await prisma.employee.findUnique({
             where: { employeeId: data.employeeId }
         });
+
+        if (!employee) {
+            // Check if it's already a UUID
+            employee = await prisma.employee.findUnique({
+                where: { id: data.employeeId }
+            });
+        }
 
         if (!employee) {
             return errorResponse(res, `Employee with ID ${data.employeeId} not found`, "NOT_FOUND", 404);

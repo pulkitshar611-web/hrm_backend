@@ -13,11 +13,14 @@ model User {
   email         String         @unique
   password      String
   role          Role           @default(STAFF)
+  companyId     String?        // Optional - null for ADMIN users
+  company       Company?       @relation(fields: [companyId], references: [id])
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   windowPreferences Json?      // Stores layoutMode, animations, etc.
   refreshTokens RefreshToken[]
 
+  @@index([companyId], map: "user_companyId_fkey")
   @@map("user")
 }
 
@@ -50,6 +53,7 @@ model Company {
   updatedAt    DateTime   @updatedAt
   payFrequency String     @default("Monthly")
   trn          String?
+  users        User[]     // Users assigned to this company
   employees    Employee[]
   transactions Transaction[]
   cheques      Cheque[]
