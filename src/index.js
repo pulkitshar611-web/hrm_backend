@@ -62,6 +62,8 @@ app.use('/api/sales-share', require('./routes/salesShare.routes'));
 app.use('/api/system-settings', require('./routes/systemSettings.routes'));
 app.use('/api/audit', require('./routes/audit.routes'));
 app.use('/api/files', require('./routes/file.routes'));
+app.use('/api/upload', require('./routes/upload.routes'));
+app.use('/api/beneficiaries', require('./routes/beneficiary.routes'));
 
 // Root route
 app.get('/', (req, res) => {

@@ -44,6 +44,9 @@ model Company {
   name         String
   code         String     @unique
   address      String?
+  addressLine2 String?
+  mailingAddress1 String?
+  mailingAddress2 String?
   phone        String?
   email        String?
   logo         String?
@@ -66,6 +69,7 @@ model Company {
   gangShiftAssignments GangShiftAssignment[]
   salesShares  SalesShare[]
   settings     Json?      // Stores custom labels, etc.
+  beneficiaries Beneficiary[]
 
   @@map("company")
 }
@@ -464,4 +468,23 @@ enum Role {
   HR_MANAGER
   FINANCE
   STAFF
+}
+
+model Beneficiary {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  name            String
+  description     String?
+  accountNumber   String
+  bankName        String?  // Optional, if needed
+  currency        String   @default("JMD")
+  isActive        Boolean  @default(true)
+  includeInExport Boolean  @default(true)
+  remitTotal      Decimal  @default(0.00) @db.Decimal(15, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId], map: "beneficiary_companyId_fkey")
+  @@map("beneficiary")
 }
