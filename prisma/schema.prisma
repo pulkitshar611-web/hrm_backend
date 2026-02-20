@@ -120,6 +120,8 @@ model Employee {
   healthInsurance       Decimal     @default(0.00) @db.Decimal(15, 2)
   pensionPercent        Decimal     @default(0.00) @db.Decimal(5, 2)
   unionDues             Decimal     @default(0.00) @db.Decimal(15, 2)
+  vacationBalance       Decimal     @default(0.00) @db.Decimal(10, 2)
+  sickBalance           Decimal     @default(0.00) @db.Decimal(10, 2)
   departmentId          String?
   companyId             String
   createdAt             DateTime    @default(now())

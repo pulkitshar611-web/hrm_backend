@@ -101,4 +101,23 @@ const deleteLeave = async (req, res, next) => {
     }
 };
 
-module.exports = { getLeaves, createLeave, updateLeave, deleteLeave };
+const getLeaveBalances = async (req, res, next) => {
+    try {
+        const { employeeId } = req.params;
+        const employee = await prisma.employee.findUnique({
+            where: { id: employeeId },
+            select: { vacationBalance: true, sickBalance: true }
+        });
+        if (!employee) {
+            return errorResponse(res, "Employee not found", "NOT_FOUND", 404);
+        }
+        return successResponse(res, {
+            vacationBalance: parseFloat(employee.vacationBalance) || 0,
+            sickBalance: parseFloat(employee.sickBalance) || 0
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getLeaves, createLeave, updateLeave, deleteLeave, getLeaveBalances };

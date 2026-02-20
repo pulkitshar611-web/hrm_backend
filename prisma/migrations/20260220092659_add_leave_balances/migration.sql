@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `employee` ADD COLUMN `sickBalance` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    ADD COLUMN `vacationBalance` DECIMAL(10, 2) NOT NULL DEFAULT 0.00;
