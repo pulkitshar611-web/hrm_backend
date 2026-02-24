@@ -11,7 +11,9 @@ const {
     getPayrollBatches,
     sendPayrollEmail,
     bulkSendEmails,
-    transmitBankAdvice
+    transmitBankAdvice,
+    getStatutorySummary,
+    getEmployeeStatutoryDetails
 } = require('../controllers/payroll.controller');
 const { verifyToken, requireRole } = require('../middlewares/auth');
 const { auditLog } = require('../middlewares/audit');
@@ -20,6 +22,8 @@ router.use(verifyToken);
 // Reading records allowed for all authenticated users (Staff can only see their own)
 router.get('/', getPayrolls);
 router.get('/batches', getPayrollBatches);
+router.get('/statutory-summary', getStatutorySummary);
+router.get('/statutory-details/:employeeId', getEmployeeStatutoryDetails);
 
 // Management restricted to higher roles
 router.use(requireRole(['ADMIN', 'HR_MANAGER', 'FINANCE']));

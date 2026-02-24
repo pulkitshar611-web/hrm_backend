@@ -586,3 +586,219 @@ module.exports = {
     bulkSendEmails,
     transmitBankAdvice
 };
+
+// --- STATUTORY CONSOLIDATION PHASE 1 ---
+const getStatutorySummary = async (req, res, next) => {
+    try {
+        const { companyId, year } = req.query;
+        if (!companyId || !year) {
+            return errorResponse(res, "Company ID and Year are required", "VALIDATION_ERROR", 400);
+        }
+
+        const payrolls = await prisma.payroll.findMany({
+            where: {
+                employee: { companyId },
+                period: { contains: year },
+                status: { notIn: ['Pending', 'Calculated'] } // Only Finalized/Paid/Sent
+            },
+            include: {
+                employee: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        trn: true,
+                        nisNumber: true,
+                        nhtNumber: true
+                    }
+                }
+            }
+        });
+
+        // Group by Employee
+        const summaryMap = {};
+        payrolls.forEach(p => {
+            const empId = p.employee.id;
+            if (!summaryMap[empId]) {
+                summaryMap[empId] = {
+                    employee: p.employee,
+                    grossPay: 0,
+                    nisEmployee: 0,
+                    nhtEmployee: 0,
+                    nisEmployer: 0,
+                    nhtEmployer: 0,
+                    weeksNis: 0,
+                    weeksNht: 0,
+                    periods: []
+                };
+            }
+            const stat = summaryMap[empId];
+            const gross = parseFloat(p.grossSalary || 0);
+            const nisE = parseFloat(p.nis || 0);
+            const nhtE = parseFloat(p.nht || 0);
+
+            // Re-calculate Employer portions (NIS 3%, NHT 3%)
+            const nisR = gross * 0.03;
+            const nhtR = gross * 0.03;
+
+            stat.grossPay += gross;
+            stat.nisEmployee += nisE;
+            stat.nisEmployer += nisR;
+            stat.nhtEmployee += nhtE;
+            stat.nhtEmployer += nhtR;
+
+            if (!stat.periods.includes(p.period)) {
+                stat.periods.push(p.period);
+                // We count a 'week/period' if there was a contribution
+                if (nisE > 0 || nisR > 0) stat.weeksNis++;
+                if (nhtE > 0 || nhtR > 0) stat.weeksNht++;
+            }
+        });
+
+        const formatted = Object.values(summaryMap).map(s => {
+            return {
+                id: s.employee.id,
+                employeeName: `${s.employee.lastName}, ${s.employee.firstName}`,
+                trn: s.employee.trn || 'N/A',
+                nisNumber: s.employee.nisNumber || 'N/A',
+                nhtNumber: s.employee.nhtNumber || 'N/A',
+                grossPay: s.grossPay,
+                wksNis: s.weeksNis,
+                nisEmployee: s.nisEmployee,
+                nisEmployer: s.nisEmployer,
+                nisTotal: s.nisEmployee + s.nisEmployer,
+                wksNht: s.weeksNht,
+                nhtEmployee: s.nhtEmployee,
+                nhtEmployer: s.nhtEmployer,
+                nhtTotal: s.nhtEmployee + s.nhtEmployer,
+                totalPeriods: s.periods.length,
+                periodList: s.periods
+            };
+        });
+
+        formatted.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+
+        return successResponse(res, formatted);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports.getStatutorySummary = getStatutorySummary;
+
+// --- PHASE 2: INDIVIDUAL NHT LETTER DRILL-DOWN ---
+const getEmployeeStatutoryDetails = async (req, res, next) => {
+    try {
+        const { employeeId } = req.params;
+        const { year } = req.query;
+
+        if (!employeeId || !year) {
+            return errorResponse(res, "Employee ID and Year are required", "VALIDATION_ERROR", 400);
+        }
+
+        // 1. Fetch employee master data
+        const employee = await prisma.employee.findUnique({
+            where: { id: employeeId },
+            include: {
+                company: {
+                    select: { id: true, name: true, trn: true, address: true, phone: true }
+                },
+                department: { select: { name: true } }
+            }
+        });
+
+        if (!employee) {
+            return errorResponse(res, "Employee not found", "NOT_FOUND", 404);
+        }
+
+        // 2. Fetch all finalized payrolls for this employee in the given year
+        const payrolls = await prisma.payroll.findMany({
+            where: {
+                employeeId,
+                period: { contains: year },
+                status: { notIn: ['Pending', 'Calculated'] }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        // 3. Aggregate YTD figures
+        let ytdGross = 0;
+        let ytdNisEmployee = 0;
+        let ytdNhtEmployee = 0;
+        let ytdNisEmployer = 0;
+        let ytdNhtEmployer = 0;
+        let ytdPaye = 0;
+        let ytdEdTax = 0;
+        const periodBreakdown = [];
+
+        payrolls.forEach(p => {
+            const gross = parseFloat(p.grossSalary || 0);
+            const nisEE = parseFloat(p.nis || 0);
+            const nhtEE = parseFloat(p.nht || 0);
+            const nisER = gross * 0.03;
+            const nhtER = gross * 0.03;
+            const paye = parseFloat(p.paye || 0);
+            const edTax = parseFloat(p.edTax || 0);
+
+            ytdGross += gross;
+            ytdNisEmployee += nisEE;
+            ytdNhtEmployee += nhtEE;
+            ytdNisEmployer += nisER;
+            ytdNhtEmployer += nhtER;
+            ytdPaye += paye;
+            ytdEdTax += edTax;
+
+            periodBreakdown.push({
+                period: p.period,
+                grossSalary: gross,
+                nisEmployee: nisEE,
+                nisEmployer: nisER,
+                nhtEmployee: nhtEE,
+                nhtEmployer: nhtER,
+                paye,
+                edTax,
+                status: p.status
+            });
+        });
+
+        const totalPeriodsNis = periodBreakdown.filter(p => p.nisEmployee > 0 || p.nisEmployer > 0).length;
+        const totalPeriodsNht = periodBreakdown.filter(p => p.nhtEmployee > 0 || p.nhtEmployer > 0).length;
+
+        return successResponse(res, {
+            employee: {
+                id: employee.id,
+                employeeId: employee.employeeId,
+                firstName: employee.firstName,
+                lastName: employee.lastName,
+                trn: employee.trn || 'N/A',
+                nisNumber: employee.nisNumber || 'N/A',
+                nhtNumber: employee.nhtNumber || 'N/A',
+                designation: employee.designation || 'N/A',
+                joinDate: employee.joinDate,
+                payFrequency: employee.payFrequency,
+                department: employee.department?.name || 'N/A'
+            },
+            company: employee.company,
+            year,
+            ytd: {
+                grossPay: ytdGross,
+                nisEmployee: ytdNisEmployee,
+                nisEmployer: ytdNisEmployer,
+                nisTotal: ytdNisEmployee + ytdNisEmployer,
+                nhtEmployee: ytdNhtEmployee,
+                nhtEmployer: ytdNhtEmployer,
+                nhtTotal: ytdNhtEmployee + ytdNhtEmployer,
+                paye: ytdPaye,
+                edTax: ytdEdTax,
+                totalPeriodsNis,
+                totalPeriodsNht,
+                totalPeriods: payrolls.length
+            },
+            periodBreakdown
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports.getEmployeeStatutoryDetails = getEmployeeStatutoryDetails;
