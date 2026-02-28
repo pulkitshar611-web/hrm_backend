@@ -1,5 +1,12 @@
 const prisma = require('../config/db');
 const { successResponse, errorResponse } = require('../utils/response');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const getCompanies = async (req, res, next) => {
     try {
@@ -77,7 +84,13 @@ const uploadLogo = async (req, res, next) => {
             return errorResponse(res, "No file uploaded", "VALIDATION_ERROR", 400);
         }
 
-        const logoUrl = `/uploads/company-logos/${req.file.filename}`;
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: 'hrm/company-logos',
+            resource_type: 'image',
+        });
+
+        const logoUrl = result.secure_url;
 
         const company = await prisma.company.update({
             where: { id },
