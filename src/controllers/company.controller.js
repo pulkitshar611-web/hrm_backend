@@ -70,4 +70,24 @@ const updateCompany = async (req, res, next) => {
     }
 };
 
-module.exports = { getCompanies, createCompany, updateCompany };
+const uploadLogo = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        if (!req.file) {
+            return errorResponse(res, "No file uploaded", "VALIDATION_ERROR", 400);
+        }
+
+        const logoUrl = `/uploads/company-logos/${req.file.filename}`;
+
+        const company = await prisma.company.update({
+            where: { id },
+            data: { logo: logoUrl }
+        });
+
+        return successResponse(res, company, "Logo uploaded successfully");
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getCompanies, createCompany, updateCompany, uploadLogo };
