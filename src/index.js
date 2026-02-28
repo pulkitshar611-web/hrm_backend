@@ -4,6 +4,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const errorHandler = require('./middlewares/errorHandler');
+const { startLeaveAccrualJob } = require('./services/leaveAccrual.service');
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy (required for accurate IPs on Railway/Cloud)
@@ -64,6 +65,8 @@ app.use('/api/sales-share', require('./routes/salesShare.routes'));
 app.use('/api/system-settings', require('./routes/systemSettings.routes'));
 app.use('/api/audit', require('./routes/audit.routes'));
 app.use('/api/files', require('./routes/file.routes'));
+app.use('/api/upload', require('./routes/upload.routes'));
+app.use('/api/beneficiaries', require('./routes/beneficiary.routes'));
 
 // Root route
 app.get('/', (req, res) => {
@@ -75,4 +78,5 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    startLeaveAccrualJob(); // Start automated leave accrual cron
 });

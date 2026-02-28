@@ -104,22 +104,22 @@ async function main() {
     // 2. HR Manager
     await prisma.user.upsert({
         where: { email: 'hr@islandhr.com' },
-        update: { password: password, role: 'HR_MANAGER' },
-        create: { username: 'HR Manager', email: 'hr@islandhr.com', password: password, role: 'HR_MANAGER' }
+        update: { password: password, role: 'HR_MANAGER', companyId: company.id },
+        create: { username: 'HR Manager', email: 'hr@islandhr.com', password: password, role: 'HR_MANAGER', companyId: company.id }
     });
 
     // 3. Finance
     await prisma.user.upsert({
         where: { email: 'finance@islandhr.com' },
-        update: { password: password, role: 'FINANCE' },
-        create: { username: 'Finance Officer', email: 'finance@islandhr.com', password: password, role: 'FINANCE' }
+        update: { password: password, role: 'FINANCE', companyId: company.id },
+        create: { username: 'Finance Officer', email: 'finance@islandhr.com', password: password, role: 'FINANCE', companyId: company.id }
     });
 
     // 4. Staff
     await prisma.user.upsert({
         where: { email: 'staff@islandhr.com' },
-        update: { password: password, role: 'STAFF' },
-        create: { username: 'General Staff', email: 'staff@islandhr.com', password: password, role: 'STAFF' }
+        update: { password: password, role: 'STAFF', companyId: company.id },
+        create: { username: 'General Staff', email: 'staff@islandhr.com', password: password, role: 'STAFF', companyId: company.id }
     });
 
     console.log("Master Seed Completed 🚀");
