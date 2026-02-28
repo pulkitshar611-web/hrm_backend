@@ -1,0 +1,73 @@
+{
+  "users": [
+    {
+      "email": "finance@islandhr.com",
+      "role": "FINANCE",
+      "companyId": null
+    },
+    {
+      "email": "staff@islandhr.com",
+      "role": "STAFF",
+      "companyId": null
+    },
+    {
+      "email": "admin@islandhr.com",
+      "role": "ADMIN",
+      "companyId": null
+    },
+    {
+      "email": "test10@gmail.com",
+      "role": "STAFF",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "hr@islandhr.com",
+      "role": "HR_MANAGER",
+      "companyId": null
+    },
+    {
+      "email": "isl@gmail.com",
+      "role": "HR_MANAGER",
+      "companyId": null
+    }
+  ],
+  "employees": [
+    {
+      "email": "sarah.smith@islandhr.com",
+      "firstName": "SARAH",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "peter.parker@islandhr.com",
+      "firstName": "PETER",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "john.doe@islandhr.com",
+      "firstName": "JOHN",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "isl@gmail.com",
+      "firstName": "isl",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "test10@gmail.com",
+      "firstName": "test",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    },
+    {
+      "email": "mike.ross@islandhr.com",
+      "firstName": "MIKE",
+      "companyId": "ea65e9b1-e859-4d7e-80e3-b4611b856479",
+      "companyName": "Island HR Solutions"
+    }
+  ]
+}
